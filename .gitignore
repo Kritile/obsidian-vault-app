@@ -1,0 +1,30 @@
+# Dart / Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+coverage/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+
+# Platform-generated files
+android/.gradle/
+android/local.properties
+linux/flutter/ephemeral/
+windows/flutter/ephemeral/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+key.properties
+
+# Operating-system files
+.DS_Store
+Thumbs.db
