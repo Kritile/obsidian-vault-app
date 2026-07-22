@@ -19,7 +19,7 @@ abstract final class AppLog {
     if (stackTrace != null) {
       debugPrintStack(
         stackTrace: stackTrace,
-        label: '[PavelVault][$area] stack trace',
+        label: '[Vellum][$area] stack trace',
       );
     }
   }
@@ -27,6 +27,6 @@ abstract final class AppLog {
   static void _write(String level, String area, String message) {
     if (!kDebugMode) return;
     final time = DateTime.now().toIso8601String();
-    debugPrint('$time [$level] [PavelVault:$area] $message');
+    debugPrint('$time [$level] [Vellum:$area] $message');
   }
 }

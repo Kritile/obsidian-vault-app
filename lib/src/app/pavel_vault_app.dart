@@ -17,7 +17,7 @@ class PavelVaultApp extends ConsumerWidget {
     final settings = ref.watch(settingsControllerProvider);
     final sync = ref.watch(syncControllerProvider);
     return MaterialApp(
-      title: 'Pavel Vault',
+      title: 'Vellum',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.system,
       theme: _theme(Brightness.light, settings.motionPreference),

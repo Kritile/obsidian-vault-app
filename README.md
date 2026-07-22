@@ -1,4 +1,4 @@
-# Pavel Vault
+# Vellum
 
 Flutter-клиент для существующего Obsidian vault. Приложение не вводит собственный публичный формат: серверной копией остаются обычные Markdown/YAML-файлы и вложения на WebDAV.
 
@@ -54,7 +54,7 @@ dart run tool/vault_audit.dart ..
 flutter build linux --debug
 ```
 
-GitHub Actions выполняет `flutter pub get`, `flutter analyze` и `flutter test` на Linux. Файловые тесты атомарного encrypted store дополнительно запускаются на Windows.
+GitHub Actions выполняет `flutter pub get`, `flutter analyze` и `flutter test` на Linux, собирает release-артефакты для Android, Linux и Windows. Файловые тесты атомарного encrypted store дополнительно запускаются на Windows.
 
 При `flutter run` debug-консоль показывает этапы подключения, HTTP-методы и коды WebDAV, загрузки файлов, решения синхронизации и ошибки со stack trace. Пароли, PIN и `Authorization` не логируются.
 

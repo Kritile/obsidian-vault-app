@@ -43,7 +43,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
                 const Icon(Icons.lock_outline, size: 52),
                 const SizedBox(height: 16),
                 Text(
-                  'Pavel Vault заблокирован',
+                  'Vellum заблокирован',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: 20),

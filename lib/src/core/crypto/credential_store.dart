@@ -245,7 +245,7 @@ class AppLockService {
     try {
       if (!await _authentication.isDeviceSupported()) return false;
       return _authentication.authenticate(
-        localizedReason: 'Разблокировать Pavel Vault',
+        localizedReason: 'Разблокировать Vellum',
         persistAcrossBackgrounding: true,
       );
     } catch (_) {

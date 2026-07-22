@@ -228,8 +228,8 @@ class ReportService {
   }) async {
     final fonts = await _unicodeFonts();
     final pdf = pw.Document(
-      title: 'Pavel Vault detailed report',
-      author: 'Pavel Vault',
+      title: 'Vellum detailed report',
+      author: 'Vellum',
       subject: '${_isoDate(period.start)} - ${_isoDate(period.end)}',
     );
     final totals = _projectTotals(entries);
@@ -253,7 +253,7 @@ class ReportService {
         margin: const pw.EdgeInsets.all(28),
         theme: pw.ThemeData.withFont(base: fonts.$1, bold: fonts.$2),
         build: (_) => [
-          pw.Header(level: 0, child: pw.Text('Pavel Vault detailed report')),
+          pw.Header(level: 0, child: pw.Text('Vellum detailed report')),
           pw.Text('${_isoDate(period.start)} - ${_isoDate(period.end)}'),
           if (reportData != null) ...[
             _pdfHeader('Overview'),
