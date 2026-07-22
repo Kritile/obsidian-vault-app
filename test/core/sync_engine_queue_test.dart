@@ -148,11 +148,48 @@ void main() {
       expect(remote.downloads, isEmpty);
     },
   );
+
+  test('WebDAV quota is checked when local space is unknown', () async {
+    final local = _MemoryVault()..put('note.md', 'upload');
+    final remote = _FakeWebDav();
+    final engine = SyncEngine(
+      local: local,
+      store: _MemoryStore(),
+      remote: remote,
+      capacity: _UnknownSpace(),
+    );
+
+    await engine.synchronize();
+
+    expect(remote.quotaCalls, 1);
+  });
+
+  test('failed local deletion remains as delete operation in outbox', () async {
+    final engine = SyncEngine(
+      local: _MemoryVault(),
+      store: _MemoryStore(),
+      remote: _FailingDeleteWebDav(),
+    );
+
+    await expectLater(
+      engine.synchronizeDelete('deleted.md'),
+      throwsA(isA<DioException>()),
+    );
+
+    expect(engine.queue.single.kind, SyncOperationKind.delete);
+    expect(engine.queue.single.state, SyncQueueState.error);
+    expect(engine.queue.single.retryable, isTrue);
+  });
 }
 
 class _NoSpace extends StorageCapacityService {
   @override
   Future<int?> availableBytes(String? path) async => 0;
+}
+
+class _UnknownSpace extends StorageCapacityService {
+  @override
+  Future<int?> availableBytes(String? path) async => null;
 }
 
 class _FailingWebDav extends _FakeWebDav {
@@ -162,6 +199,26 @@ class _FailingWebDav extends _FakeWebDav {
     Uint8List bytes, {
     String? expectedEtag,
   }) async {
+    throw DioException(
+      requestOptions: RequestOptions(path: path),
+      type: DioExceptionType.connectionError,
+      error: 'offline',
+    );
+  }
+}
+
+class _FailingDeleteWebDav extends _FakeWebDav {
+  @override
+  Future<WebDavEntry?> entry(String path) async => WebDavEntry(
+    path: path,
+    isDirectory: false,
+    modifiedAt: DateTime(2026),
+    size: 1,
+    etag: 'old',
+  );
+
+  @override
+  Future<void> delete(String path, {String? expectedEtag}) async {
     throw DioException(
       requestOptions: RequestOptions(path: path),
       type: DioExceptionType.connectionError,
@@ -243,6 +300,7 @@ class _FakeWebDav extends WebDavClient {
   final List<Uint8List> uploads = [];
   final List<String> downloads = [];
   List<WebDavEntry> entries = const [];
+  var quotaCalls = 0;
 
   @override
   Future<List<WebDavEntry>> listTree() async {
@@ -255,6 +313,12 @@ class _FakeWebDav extends WebDavClient {
   Future<Uint8List> download(String path) async {
     downloads.add(path);
     return Uint8List(1024);
+  }
+
+  @override
+  Future<WebDavQuota> quota() async {
+    quotaCalls++;
+    return const WebDavQuota(availableBytes: 1 << 40, usedBytes: 0);
   }
 
   @override

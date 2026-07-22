@@ -229,7 +229,7 @@ class EncryptedObjectStore {
     if (await _root!.exists()) await _root!.delete(recursive: true);
   }
 
-  Future<String> rollbackFrom(String backupPath) async {
+  Future<void> rollbackFrom(String backupPath) async {
     _ensureReady();
     final backup = Directory(backupPath);
     if (!await backup.exists()) {
@@ -246,7 +246,9 @@ class EncryptedObjectStore {
       }
       rethrow;
     }
-    return failed;
+    if (await Directory(failed).exists()) {
+      await Directory(failed).delete(recursive: true);
+    }
   }
 
   File _file(String key) {

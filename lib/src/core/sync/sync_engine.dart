@@ -93,6 +93,24 @@ class SyncEngine {
     return operation.future;
   }
 
+  Future<SyncResult> synchronizeDelete(String path) {
+    if (_closed) return Future.error(_closedError());
+    final pending = _pendingFiles[path];
+    if (pending != null) return pending.future;
+    _outbox[path] = SyncQueueEntry(
+      path: path,
+      kind: SyncOperationKind.delete,
+      state: SyncQueueState.waiting,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    _emitQueue();
+    unawaited(_saveOutbox());
+    final operation = _FileQueueEntry(path, () => _runTrackedDelete(path));
+    _pendingFiles[path] = operation;
+    _enqueue(operation);
+    return operation.future;
+  }
+
   List<SyncQueueEntry> get queue => _orderedOutbox();
 
   Future<void> restorePending() async {
@@ -100,14 +118,15 @@ class SyncEngine {
     await _loadOutbox();
     for (final entry in [..._outbox.values]) {
       if ((entry.state == SyncQueueState.waiting || entry.retryable) &&
-          !_pendingFiles.containsKey(entry.path) &&
-          entry.kind != SyncOperationKind.delete) {
+          !_pendingFiles.containsKey(entry.path)) {
         final operation = _FileQueueEntry(
           entry.path,
           () =>
               entry.kind == SyncOperationKind.move &&
                   entry.destinationPath != null
               ? _runTrackedMove(entry.path, entry.destinationPath!)
+              : entry.kind == SyncOperationKind.delete
+              ? _runTrackedDelete(entry.path)
               : _runTrackedFile(entry.path),
         );
         _pendingFiles[entry.path] = operation;
@@ -134,6 +153,8 @@ class SyncEngine {
           current.kind == SyncOperationKind.move &&
               current.destinationPath != null
           ? _runTrackedMove(path, current.destinationPath!)
+          : current.kind == SyncOperationKind.delete
+          ? _runTrackedDelete(path)
           : _runTrackedFile(path),
     );
     _pendingFiles[path] = operation;
@@ -286,6 +307,41 @@ class SyncEngine {
       return const SyncResult(downloaded: 0, uploaded: 1, conflicts: []);
     } catch (error) {
       _outbox[from] = _outbox[from]!.copyWith(
+        state: SyncQueueState.error,
+        error: error.toString(),
+        retryable: _isRetryable(error),
+        updatedAt: DateTime.now().toUtc(),
+      );
+      await _saveOutbox();
+      rethrow;
+    }
+  }
+
+  Future<SyncResult> _runTrackedDelete(String path) async {
+    await _loadOutbox();
+    final current = _outbox[path]!;
+    _outbox[path] = current.copyWith(
+      state: SyncQueueState.sending,
+      attempts: current.attempts + 1,
+      clearError: true,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await _saveOutbox();
+    try {
+      final state = await _loadState();
+      final old = state[path];
+      final remoteEntry = await _remote.entry(path);
+      if (remoteEntry != null) {
+        await _remote.delete(path, expectedEtag: old?.etag ?? remoteEntry.etag);
+      }
+      state.remove(path);
+      await _store.remove(_baseKey(path));
+      await _saveState(state);
+      _outbox.remove(path);
+      await _saveOutbox();
+      return const SyncResult(downloaded: 0, uploaded: 1, conflicts: []);
+    } catch (error) {
+      _outbox[path] = _outbox[path]!.copyWith(
         state: SyncQueueState.error,
         error: error.toString(),
         retryable: _isRetryable(error),
@@ -562,7 +618,7 @@ class SyncEngine {
         uploadBytes += entry.value.bytes.length;
       }
     }
-    if (uploadBytes == 0 || availableLocal == null) return;
+    if (uploadBytes == 0) return;
     try {
       final quota = await _remote.quota();
       if (quota.availableBytes case final available?

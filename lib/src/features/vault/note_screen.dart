@@ -117,6 +117,11 @@ class _NoteScreenState extends ConsumerState<NoteScreen>
           onPressed: _moveNote,
           icon: const Icon(Icons.drive_file_move_outline),
         ),
+        IconButton(
+          tooltip: 'Удалить заметку',
+          onPressed: _deleteNote,
+          icon: const Icon(Icons.delete_outline),
+        ),
         if (_editing)
           IconButton(
             onPressed: _saving ? null : _save,
@@ -580,6 +585,31 @@ class _NoteScreenState extends ConsumerState<NoteScreen>
         SnackBar(content: Text('Не удалось переместить заметку: $error')),
       );
     }
+  }
+
+  Future<void> _deleteNote() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить заметку?'),
+        content: Text(
+          '${_note.document.path}\n\nУдаление сохранится локально и будет повторено на WebDAV после восстановления сети.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref.read(syncControllerProvider).deleteNote(_note.document.path);
+    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _copyTrainingYaml() async {

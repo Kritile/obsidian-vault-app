@@ -9,6 +9,7 @@ import '../core/markdown/work_entry_codec.dart';
 import '../core/sync/webdav_profile.dart';
 import '../core/sync/webdav_client.dart';
 import '../core/sync/storage_capacity_service.dart';
+import '../core/sync/sync_models.dart';
 import '../core/vault/encrypted_cached_repository.dart';
 import '../core/vault/vault_index.dart';
 import '../core/vault/vault_models.dart';
@@ -37,6 +38,12 @@ class VaultController extends ChangeNotifier {
       imageCacheLimitBytes: imageCacheLimitBytes,
     );
   }
+
+  @visibleForTesting
+  Future<void> initializeStoreForTesting(
+    EncryptedObjectStore value, {
+    int imageCacheLimitBytes = 10 * 1024 * 1024,
+  }) => _openStore(value, imageCacheLimitBytes: imageCacheLimitBytes);
 
   Future<void> activateProfile(
     WebDavProfile profile, {
@@ -93,6 +100,11 @@ class VaultController extends ChangeNotifier {
         etag: current?.etag,
       ),
     );
+    await refreshIndex();
+  }
+
+  Future<void> deleteLocal(String path) async {
+    await cache.delete(path);
     await refreshIndex();
   }
 
@@ -179,17 +191,46 @@ class VaultController extends ChangeNotifier {
     await refreshIndex();
   }
 
-  Future<void> recoverFromWebDav(WebDavProfile profile) async {
-    final remote = WebDavClient(profile.credentials);
+  Future<void> recoverFromWebDav(
+    WebDavProfile profile, {
+    WebDavClient? client,
+    StorageCapacityService capacity = const StorageCapacityService(),
+  }) async {
+    final remote = client ?? WebDavClient(profile.credentials);
     final entries = (await remote.listTree())
         .where((item) => !item.isDirectory)
         .toList(growable: false);
+    final oldStore = store;
+    final outboxBytes = await oldStore.read('__sync_outbox_v1__');
+    var pending = const <SyncQueueEntry>[];
+    if (outboxBytes != null) {
+      pending = (jsonDecode(utf8.decode(outboxBytes)) as List<Object?>)
+          .map(
+            (raw) =>
+                SyncQueueEntry.fromJson(Map<String, Object?>.from(raw! as Map)),
+          )
+          .toList(growable: false);
+    }
+    final remotePaths = entries.map((item) => item.path).toSet();
+    var queuedNewBytes = 0;
+    for (final item in pending.where(
+      (item) => item.kind != SyncOperationKind.delete,
+    )) {
+      final localPath = item.kind == SyncOperationKind.move
+          ? item.destinationPath
+          : item.path;
+      if (localPath == null || remotePaths.contains(localPath)) continue;
+      final local = await cache.read(localPath);
+      if (local == null) {
+        throw StateError('Не удалось прочитать локальное изменение $localPath');
+      }
+      queuedNewBytes += local.bytes.length;
+    }
     final remoteBytes = entries.fold<int>(0, (sum, item) => sum + item.size);
+    final payloadBytes = remoteBytes + queuedNewBytes;
     final required =
-        remoteBytes + (remoteBytes ~/ 10).clamp(128 * 1024 * 1024, 1 << 62);
-    final available = await const StorageCapacityService().availableBytes(
-      store.rootPath,
-    );
+        payloadBytes + (payloadBytes ~/ 10).clamp(128 * 1024 * 1024, 1 << 62);
+    final available = await capacity.availableBytes(store.rootPath);
     if (available != null && available < required) {
       throw InsufficientSpaceException(
         requiredBytes: required,
@@ -198,7 +239,6 @@ class VaultController extends ChangeNotifier {
       );
     }
 
-    final oldStore = store;
     final stagingStore = await oldStore.createStaging();
     String? backupPath;
     try {
@@ -223,22 +263,38 @@ class VaultController extends ChangeNotifier {
           );
         }
 
-        final outboxBytes = await oldStore.read('__sync_outbox_v1__');
         if (outboxBytes != null) {
-          final pending = jsonDecode(utf8.decode(outboxBytes)) as List<Object?>;
-          for (final raw in pending) {
-            final item = Map<String, Object?>.from(raw! as Map);
-            final path = item['kind'] == 'move'
-                ? item['destinationPath']?.toString()
-                : item['path']?.toString();
-            if (path == null) continue;
-            final local = await cache.read(path);
-            if (local == null) {
-              throw StateError(
-                'Не удалось сохранить локальное изменение $path; восстановление отменено',
-              );
+          for (final item in pending) {
+            switch (item.kind) {
+              case SyncOperationKind.delete:
+                await staging.delete(item.path);
+                break;
+              case SyncOperationKind.move:
+                final destination = item.destinationPath;
+                if (destination == null) {
+                  throw StateError(
+                    'У MOVE ${item.path} отсутствует новый путь',
+                  );
+                }
+                final local = await cache.read(destination);
+                if (local == null) {
+                  throw StateError(
+                    'Не удалось сохранить перемещённый файл $destination; восстановление отменено',
+                  );
+                }
+                await staging.write(local);
+                await staging.delete(item.path);
+                break;
+              case SyncOperationKind.upload:
+                final local = await cache.read(item.path);
+                if (local == null) {
+                  throw StateError(
+                    'Не удалось сохранить локальное изменение ${item.path}; восстановление отменено',
+                  );
+                }
+                await staging.write(local);
+                break;
             }
-            await staging.write(local);
           }
           await stagingStore.write('__sync_outbox_v1__', outboxBytes);
         }
@@ -255,6 +311,7 @@ class VaultController extends ChangeNotifier {
         if (await staging.read(entry.path) == null) {
           throw StateError('Не удалось проверить ${entry.path}');
         }
+        if (entry.isMarkdown) parser.validate(entry);
       }
       backupPath = await oldStore.replaceWith(stagingStore);
       lastRecoveryBackupPath = backupPath;

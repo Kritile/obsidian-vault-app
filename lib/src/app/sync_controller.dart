@@ -238,6 +238,29 @@ class SyncController extends ChangeNotifier {
     }
   }
 
+  Future<void> deleteNote(String path) async {
+    _beginOperation();
+    try {
+      await _vault.deleteLocal(path);
+      await onVaultChanged?.call();
+      final engine = _engine;
+      if (engine == null) return;
+      try {
+        await engine.synchronizeDelete(path);
+      } catch (exception, stackTrace) {
+        error = exception.toString();
+        AppLog.error(
+          'Editor',
+          'Удаление сохранено в outbox: $path',
+          exception,
+          stackTrace,
+        );
+      }
+    } finally {
+      _endOperation();
+    }
+  }
+
   Future<void> close() async {
     _retryTimer?.cancel();
     _retryTimer = null;

@@ -61,6 +61,30 @@ class ObsidianParser {
     );
   }
 
+  ParsedNote validate(VaultDocument document) {
+    late final String text;
+    try {
+      text = utf8.decode(document.bytes);
+    } on FormatException catch (error) {
+      throw FormatException('Некорректный UTF-8 в ${document.path}: $error');
+    }
+    if (text.startsWith('---') && !_frontmatter.hasMatch(text)) {
+      throw FormatException('Незакрытый YAML frontmatter в ${document.path}');
+    }
+    final match = _frontmatter.firstMatch(text);
+    if (match != null) {
+      try {
+        final yaml = loadYaml(match.group(1)!);
+        if (yaml != null && yaml is! YamlMap) {
+          throw const FormatException('YAML frontmatter должен быть map');
+        }
+      } on YamlException catch (error) {
+        throw FormatException('Некорректный YAML в ${document.path}: $error');
+      }
+    }
+    return parse(document);
+  }
+
   String updateFrontmatter(String source, List<Object> path, Object? value) {
     final match = _frontmatter.firstMatch(source);
     if (match == null) {

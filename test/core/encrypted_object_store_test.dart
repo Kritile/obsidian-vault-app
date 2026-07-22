@@ -82,9 +82,13 @@ void main() {
       expect(utf8.decode((await store.read('note.md'))!), 'new');
       expect(await Directory(backup).exists(), isTrue);
 
-      final failed = await store.rollbackFrom(backup);
+      await store.rollbackFrom(backup);
       expect(utf8.decode((await store.read('note.md'))!), 'old');
-      expect(await Directory(failed).exists(), isTrue);
+      final failedCopies = await root.parent
+          .list()
+          .where((entity) => entity.path.startsWith('${root.path}.failed-'))
+          .toList();
+      expect(failedCopies, isEmpty);
     },
   );
 }
