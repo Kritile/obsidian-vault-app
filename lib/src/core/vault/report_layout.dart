@@ -6,6 +6,31 @@ enum ReportVisualization { kpi, table, line, bar, pie }
 
 enum ReportAggregation { count, sum, average, minimum, maximum }
 
+enum ReportComparison { none, previousPeriod, previousYear }
+
+class ReportTargetRange {
+  const ReportTargetRange({this.minimum, this.target, this.maximum});
+
+  final double? minimum;
+  final double? target;
+  final double? maximum;
+
+  bool get configured => minimum != null || target != null || maximum != null;
+
+  Map<String, Object?> toJson() => {
+    if (minimum != null) 'minimum': minimum,
+    if (target != null) 'target': target,
+    if (maximum != null) 'maximum': maximum,
+  };
+
+  factory ReportTargetRange.fromJson(Map<String, Object?> json) =>
+      ReportTargetRange(
+        minimum: (json['minimum'] as num?)?.toDouble(),
+        target: (json['target'] as num?)?.toDouble(),
+        maximum: (json['maximum'] as num?)?.toDouble(),
+      );
+}
+
 class ReportFilter {
   const ReportFilter({required this.field, required this.operator, this.value});
 
@@ -40,6 +65,11 @@ class ReportBlockDefinition {
     this.aggregation = ReportAggregation.count,
     this.filters = const [],
     this.tableFields = const [],
+    this.metricFormula,
+    this.comparison = ReportComparison.none,
+    this.targetRange = const ReportTargetRange(),
+    this.showOnDashboard = false,
+    this.requiredFields = const [],
     this.updatedAt,
   });
 
@@ -55,6 +85,11 @@ class ReportBlockDefinition {
   final ReportAggregation aggregation;
   final List<ReportFilter> filters;
   final List<String> tableFields;
+  final String? metricFormula;
+  final ReportComparison comparison;
+  final ReportTargetRange targetRange;
+  final bool showOnDashboard;
+  final List<String> requiredFields;
   final DateTime? updatedAt;
 
   bool get isCustom => kind == 'custom';
@@ -70,6 +105,11 @@ class ReportBlockDefinition {
     ReportAggregation? aggregation,
     List<ReportFilter>? filters,
     List<String>? tableFields,
+    String? metricFormula,
+    ReportComparison? comparison,
+    ReportTargetRange? targetRange,
+    bool? showOnDashboard,
+    List<String>? requiredFields,
     DateTime? updatedAt,
   }) => ReportBlockDefinition(
     id: id,
@@ -84,6 +124,11 @@ class ReportBlockDefinition {
     aggregation: aggregation ?? this.aggregation,
     filters: filters ?? this.filters,
     tableFields: tableFields ?? this.tableFields,
+    metricFormula: metricFormula ?? this.metricFormula,
+    comparison: comparison ?? this.comparison,
+    targetRange: targetRange ?? this.targetRange,
+    showOnDashboard: showOnDashboard ?? this.showOnDashboard,
+    requiredFields: requiredFields ?? this.requiredFields,
     updatedAt: updatedAt ?? DateTime.now().toUtc(),
   );
 
@@ -100,6 +145,12 @@ class ReportBlockDefinition {
     'aggregation': aggregation.name,
     'filters': filters.map((item) => item.toJson()).toList(),
     'tableFields': tableFields,
+    if (metricFormula != null && metricFormula!.isNotEmpty)
+      'metricFormula': metricFormula,
+    'comparison': comparison.name,
+    if (targetRange.configured) 'targetRange': targetRange.toJson(),
+    'showOnDashboard': showOnDashboard,
+    'requiredFields': requiredFields,
     'updatedAt': (updatedAt ?? DateTime.now().toUtc()).toIso8601String(),
   };
 
@@ -136,13 +187,28 @@ class ReportBlockDefinition {
       tableFields: (json['tableFields'] as List? ?? const [])
           .map((item) => item.toString())
           .toList(growable: false),
+      metricFormula: json['metricFormula']?.toString(),
+      comparison: enumValue(
+        ReportComparison.values,
+        json['comparison'],
+        ReportComparison.none,
+      ),
+      targetRange: json['targetRange'] is Map
+          ? ReportTargetRange.fromJson(
+              Map<String, Object?>.from(json['targetRange']! as Map),
+            )
+          : const ReportTargetRange(),
+      showOnDashboard: json['showOnDashboard'] == true,
+      requiredFields: (json['requiredFields'] as List? ?? const [])
+          .map((item) => item.toString())
+          .toList(growable: false),
       updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
     );
   }
 }
 
 class ReportLayoutConfig {
-  const ReportLayoutConfig({required this.blocks, this.version = 1});
+  const ReportLayoutConfig({required this.blocks, this.version = 2});
 
   static const path = '.pavel-vault/reports-layout.v1.json';
   final int version;
@@ -180,7 +246,7 @@ class ReportLayoutConfig {
         .toList(growable: false);
     if (blocks.isEmpty) throw const FormatException('Empty report layout');
     return ReportLayoutConfig(
-      version: (json['version'] as num?)?.toInt() ?? 1,
+      version: 2,
       blocks: blocks,
     );
   }

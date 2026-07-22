@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/providers.dart';
+import '../../app/report_controller.dart';
+import '../../core/vault/report_layout.dart';
 import '../../core/vault/vault_models.dart';
 import '../daily/create_daily_note_screen.dart';
 import '../daily/daily_note_calendar.dart';
@@ -17,8 +19,24 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final vault = ref.watch(vaultControllerProvider);
     final sync = ref.watch(syncControllerProvider);
+    final reportController = ref.watch(reportControllerProvider);
     final index = vault.index;
     final now = DateTime.now();
+    final dashboardPeriod = ReportPeriod(
+      start: DateTime(now.year, now.month),
+      end: DateTime(now.year, now.month + 1)
+          .subtract(const Duration(milliseconds: 1)),
+      type: 'monthly',
+    );
+    final dashboardMetrics = reportController.layout.blocks
+        .where((block) => block.visible && block.showOnDashboard && block.isCustom)
+        .map(
+          (block) => (
+            block: block,
+            value: reportController.evaluateMetric(block, dashboardPeriod),
+          ),
+        )
+        .toList(growable: false);
     final start = DateTime(
       now.year,
       now.month,
@@ -169,6 +187,17 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 12),
+            if (dashboardMetrics.isNotEmpty) ...[
+              _Reveal(
+                index: 2,
+                child: _Panel(
+                  eyebrow: 'Мои показатели',
+                  title: 'Этот месяц',
+                  child: _MetricGrid(items: dashboardMetrics),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             _ResponsivePair(
               left: _Reveal(
                 index: 2,
@@ -647,6 +676,57 @@ class _KpiGrid extends StatelessWidget {
               ),
             )
             .toList(growable: false),
+      );
+    },
+  );
+}
+
+class _MetricGrid extends StatelessWidget {
+  const _MetricGrid({required this.items});
+  final List<
+    ({ReportBlockDefinition block, ReportMetricSnapshot value})
+  > items;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final width = constraints.maxWidth < 460
+          ? constraints.maxWidth
+          : (constraints.maxWidth - 8) / 2;
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final item in items)
+            SizedBox(
+              width: width,
+              child: Card(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(item.block.title),
+                      Text(
+                        item.value.value.toStringAsFixed(
+                          item.value.value % 1 == 0 ? 0 : 1,
+                        ),
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      if (item.block.comparison.name != 'none')
+                        Text('Предыдущий: ${item.value.previous.toStringAsFixed(1)}'),
+                      if (item.value.missingRows > 0)
+                        Text(
+                          'Неполных записей: ${item.value.missingRows}',
+                          style: TextStyle(color: Theme.of(context).colorScheme.error),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       );
     },
   );

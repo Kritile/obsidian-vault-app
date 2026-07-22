@@ -32,6 +32,7 @@ class SessionController extends ChangeNotifier {
        _tasks = tasks {
     _sync.onVaultChanged = () async {
       await _reports.refresh();
+      await _reports.ensurePeriodicReports();
       await _tasks?.reconcileNotifications();
     };
     _sync.onSynchronized = _markLastSync;
@@ -82,6 +83,7 @@ class SessionController extends ChangeNotifier {
       }
       _settings.configureProfiles(webDavProfiles, activeProfileId);
       await _reports.refresh();
+      if (active != null) await _reports.ensurePeriodicReports();
       await _tasks?.initializeNotifications();
     } catch (exception, stackTrace) {
       error = exception.toString();

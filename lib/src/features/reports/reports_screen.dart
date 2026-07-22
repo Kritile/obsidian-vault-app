@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/providers.dart';
+import '../../app/report_controller.dart';
 import '../../core/vault/period_report_data.dart';
 import '../../core/vault/report_layout.dart';
 import '../../core/vault/report_service.dart';
@@ -31,6 +32,7 @@ class PeriodReportView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final reports = ref.watch(reportControllerProvider);
     final data = reports.build(period);
+    final comparisons = _comparisonData(reports, period);
     void open(ParsedNote note) => Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => NoteScreen(note: note)));
@@ -44,6 +46,7 @@ class PeriodReportView extends ConsumerWidget {
       children: [
         _ReportLayoutContent(
           data: data,
+          comparisons: comparisons,
           blocks: reports.layout.blocks,
           onOpen: open,
         ),
@@ -62,6 +65,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final reports = ref.watch(reportControllerProvider);
     final period = _period();
     final data = reports.build(period);
+    final comparisons = _comparisonData(reports, period);
     final workEntries = reports.workEntries(period);
     return PageScaffold(
       title: 'Отчёты',
@@ -87,6 +91,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ),
             PopupMenuItem(value: 'pdf', child: Text('Экспорт PDF')),
             PopupMenuItem(value: 'csv', child: Text('Экспорт CSV')),
+            PopupMenuDivider(),
+            PopupMenuItem(
+              value: 'template_export',
+              child: Text('Сохранить как шаблон'),
+            ),
+            PopupMenuItem(
+              value: 'template_import',
+              child: Text('Импортировать шаблон'),
+            ),
           ],
         ),
       ],
@@ -108,6 +121,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           const SizedBox(height: 18),
           _ReportLayoutContent(
             data: data,
+            comparisons: comparisons,
             blocks: reports.layout.blocks,
             onOpen: _openNote,
           ),
@@ -126,6 +140,21 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     PeriodReportData data,
     ReportPeriod period,
   ) async {
+    if (type == 'template_export') {
+      final name = await _templateName();
+      if (name == null) return;
+      final path = await ref.read(reportControllerProvider).exportTemplate(name);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Шаблон сохранён: $path')),
+        );
+      }
+      return;
+    }
+    if (type == 'template_import') {
+      await _importTemplate();
+      return;
+    }
     final trainings = data.trainings.map((item) => item.note).toList();
     String? result;
     if (type == 'csv') {
@@ -173,6 +202,56 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Сохранено: $result')));
+    }
+  }
+
+  Future<String?> _templateName() async {
+    final value = TextEditingController(text: 'Мой отчёт');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Название шаблона'),
+        content: TextField(controller: value, autofocus: true),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(context, value.text.trim()), child: const Text('Сохранить')),
+        ],
+      ),
+    );
+    value.dispose();
+    return result;
+  }
+
+  Future<void> _importTemplate() async {
+    final templates = ref
+        .read(vaultControllerProvider)
+        .index
+        .notes
+        .where((note) => note.frontmatter['type'] == 'report-template')
+        .toList(growable: false);
+    if (templates.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Шаблоны в Templates/Reports не найдены')),
+        );
+      }
+      return;
+    }
+    final selected = await showDialog<ParsedNote>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Импортировать шаблон'),
+        children: [
+          for (final note in templates)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, note),
+              child: Text(note.title),
+            ),
+        ],
+      ),
+    );
+    if (selected != null) {
+      await ref.read(reportControllerProvider).importTemplate(selected);
     }
   }
 
@@ -268,11 +347,13 @@ class _ReportLayoutContent extends StatelessWidget {
   const _ReportLayoutContent({
     required this.data,
     required this.blocks,
+    required this.comparisons,
     required this.onOpen,
   });
 
   final PeriodReportData data;
   final List<ReportBlockDefinition> blocks;
+  final Map<ReportComparison, PeriodReportData> comparisons;
   final ValueChanged<ParsedNote> onOpen;
 
   @override
@@ -295,7 +376,12 @@ class _ReportLayoutContent extends StatelessWidget {
         'tasks' => _TasksSection(data: data, onOpen: onOpen),
         'notes' => _NotesSection(data: data, onOpen: onOpen),
         'quality' => _DataQuality(data: data),
-        _ => _CustomReportBlock(block: block, data: data, onOpen: onOpen),
+        _ => _CustomReportBlock(
+          block: block,
+          data: data,
+          comparisonData: comparisons[block.comparison],
+          onOpen: onOpen,
+        ),
       };
       children.add(_AnimatedReportSection(index: index, child: child));
       if (index != visible.length - 1) children.add(const SizedBox(height: 20));
@@ -311,27 +397,21 @@ class _CustomReportBlock extends StatelessWidget {
   const _CustomReportBlock({
     required this.block,
     required this.data,
+    this.comparisonData,
     required this.onOpen,
   });
 
   final ReportBlockDefinition block;
   final PeriodReportData data;
+  final PeriodReportData? comparisonData;
   final ValueChanged<ParsedNote> onOpen;
 
   @override
   Widget build(BuildContext context) {
-    final rows = _sourceRows(data, block.source ?? ReportDataSource.daily)
-        .where((row) => block.filters.every((filter) => _matches(row, filter)))
-        .map((row) {
-          final formula = block.rowFormula?.trim();
-          if (formula == null || formula.isEmpty) return row;
-          try {
-            return {...row, '_formula': ReportFormula(formula).evaluate(row)};
-          } on FormatException {
-            return {...row, '_formula': 0.0};
-          }
-        })
-        .toList(growable: false);
+    final rows = _preparedRows(data);
+    final previousRows = comparisonData == null
+        ? const <Map<String, Object?>>[]
+        : _preparedRows(comparisonData!);
     if (rows.isEmpty) {
       return _Section(
         title: block.title,
@@ -373,20 +453,41 @@ class _CustomReportBlock extends StatelessWidget {
         entry.key: _aggregate(entry.value, block),
     };
     if (block.visualization == ReportVisualization.kpi) {
-      final total = _aggregate(rows, block);
+      final raw = _aggregate(rows, block);
+      final previous = _aggregate(previousRows, block);
+      final total = _metric(raw, previous);
       return _Section(
         title: block.title,
-        child: Card(
-          margin: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: total),
-              duration: const Duration(milliseconds: 700),
-              curve: Curves.easeOutBack,
-              builder: (context, value, _) => Text(
-                _format(value, value % 1 == 0 ? 0 : 1),
-                style: Theme.of(context).textTheme.displaySmall,
+        child: InkWell(
+          onTap: () => _showSources(context, rows),
+          child: Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: total),
+                    duration: const Duration(milliseconds: 700),
+                    curve: Curves.easeOutBack,
+                    builder: (context, value, _) => Text(
+                      _format(value, value % 1 == 0 ? 0 : 1),
+                      style: Theme.of(context).textTheme.displaySmall,
+                    ),
+                  ),
+                  if (block.comparison != ReportComparison.none)
+                    Text(
+                      'Предыдущий: ${_format(previous, 1)} · ${raw - previous >= 0 ? '+' : ''}${_format(raw - previous, 1)}',
+                    ),
+                  if (block.targetRange.configured)
+                    _TargetProgress(value: total, range: block.targetRange),
+                  if (_missingCount(rows) > 0)
+                    Text(
+                      'Неполные данные: ${_missingCount(rows)} записей',
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                ],
               ),
             ),
           ),
@@ -399,19 +500,111 @@ class _CustomReportBlock extends StatelessWidget {
       values.values.map<double?>((item) => item).toList(),
       const Color(0xff6d5dfc),
     );
+    final previousGrouped = <String, List<Map<String, Object?>>>{};
+    for (final row in previousRows) {
+      final raw = block.groupBy == null || block.groupBy!.isEmpty
+          ? 'Все'
+          : row[block.groupBy!];
+      final key = raw is DateTime ? _date(raw) : _displayField(raw);
+      previousGrouped.putIfAbsent(key, () => []).add(row);
+    }
+    final chartSeries = <_Series>[
+      series,
+      if (block.comparison != ReportComparison.none)
+        _Series(
+          'Предыдущий период',
+          labels
+              .map<double?>((label) => _aggregate(previousGrouped[label] ?? const [], block))
+              .toList(),
+          const Color(0xff9b91d9),
+        ),
+    ];
     final chart = switch (block.visualization) {
       ReportVisualization.line => _LineChartCard(
         title: block.title,
         labels: labels,
-        series: [series],
+        series: chartSeries,
       ),
       ReportVisualization.pie => _PieChartCard(
         title: block.title,
         values: values,
       ),
-      _ => _BarChartCard(title: block.title, labels: labels, series: [series]),
+      _ => _BarChartCard(title: block.title, labels: labels, series: chartSeries),
     };
-    return chart;
+    return InkWell(onTap: () => _showSources(context, rows), child: chart);
+  }
+
+  List<Map<String, Object?>> _preparedRows(PeriodReportData source) =>
+      _sourceRows(source, block.source ?? ReportDataSource.daily)
+          .where((row) => block.filters.every((filter) => _matches(row, filter)))
+          .map((row) {
+            final formula = block.rowFormula?.trim();
+            if (formula == null || formula.isEmpty) return row;
+            try {
+              return {...row, '_formula': ReportFormula(formula).evaluate(row)};
+            } on FormatException {
+              return {...row, '_formula': 0.0};
+            }
+          })
+          .toList(growable: false);
+
+  double _metric(double value, double previous) {
+    final formula = block.metricFormula?.trim();
+    if (formula == null || formula.isEmpty) return value;
+    try {
+      return ReportFormula(formula).evaluate({
+        'value': value,
+        'previous': previous,
+        'delta': value - previous,
+      });
+    } on FormatException {
+      return value;
+    }
+  }
+
+  int _missingCount(List<Map<String, Object?>> rows) => rows
+      .where(
+        (row) => block.requiredFields.any(
+          (field) => row[field] == null || row[field]?.toString().trim().isEmpty == true,
+        ),
+      )
+      .length;
+
+  Future<void> _showSources(
+    BuildContext context,
+    List<Map<String, Object?>> rows,
+  ) async {
+    final notes = rows
+        .map((row) => row['_note'])
+        .whereType<ParsedNote>()
+        .fold(<String, ParsedNote>{}, (map, note) {
+          map[note.document.path] = note;
+          return map;
+        })
+        .values
+        .toList(growable: false);
+    if (notes.length == 1) {
+      onOpen(notes.single);
+      return;
+    }
+    if (notes.isEmpty) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => ListView(
+        children: [
+          const ListTile(title: Text('Исходные заметки')),
+          for (final note in notes)
+            ListTile(
+              title: Text(note.title),
+              subtitle: Text(note.document.path),
+              onTap: () {
+                Navigator.pop(context);
+                onOpen(note);
+              },
+            ),
+        ],
+      ),
+    );
   }
 
   double _aggregate(
@@ -442,6 +635,51 @@ class _CustomReportBlock extends StatelessWidget {
     };
   }
 }
+
+class _TargetProgress extends StatelessWidget {
+  const _TargetProgress({required this.value, required this.range});
+  final double value;
+  final ReportTargetRange range;
+
+  @override
+  Widget build(BuildContext context) {
+    final maximum = range.maximum ?? range.target ?? value;
+    final progress = maximum <= 0 ? 0.0 : (value / maximum).clamp(0.0, 1.0);
+    final inRange =
+        (range.minimum == null || value >= range.minimum!) &&
+        (range.maximum == null || value <= range.maximum!);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LinearProgressIndicator(
+            value: progress,
+            color: inRange
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.error,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Цель: ${range.target ?? '—'} · диапазон ${range.minimum ?? '—'}–${range.maximum ?? '—'}',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Map<ReportComparison, PeriodReportData> _comparisonData(
+  ReportController reports,
+  ReportPeriod period,
+) => {
+  ReportComparison.previousPeriod: reports.build(
+    reports.comparisonPeriod(period, ReportComparison.previousPeriod),
+  ),
+  ReportComparison.previousYear: reports.build(
+    reports.comparisonPeriod(period, ReportComparison.previousYear),
+  ),
+};
 
 List<Map<String, Object?>> _sourceRows(
   PeriodReportData data,

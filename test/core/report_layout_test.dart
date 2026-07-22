@@ -15,6 +15,15 @@ void main() {
           groupBy: 'sport',
           rowFormula: 'duration * load',
           aggregation: ReportAggregation.average,
+          metricFormula: 'value - previous',
+          comparison: ReportComparison.previousPeriod,
+          targetRange: const ReportTargetRange(
+            minimum: 20,
+            target: 50,
+            maximum: 80,
+          ),
+          showOnDashboard: true,
+          requiredFields: const ['duration', 'load'],
           filters: const [
             ReportFilter(field: 'load', operator: 'greater', value: 10),
           ],
@@ -28,6 +37,23 @@ void main() {
     expect(decoded.blocks.last.source, ReportDataSource.training);
     expect(decoded.blocks.last.rowFormula, 'duration * load');
     expect(decoded.blocks.last.filters.single.operator, 'greater');
+    expect(decoded.version, 2);
+    expect(decoded.blocks.last.metricFormula, 'value - previous');
+    expect(decoded.blocks.last.comparison, ReportComparison.previousPeriod);
+    expect(decoded.blocks.last.targetRange.target, 50);
+    expect(decoded.blocks.last.showOnDashboard, isTrue);
+    expect(decoded.blocks.last.requiredFields, ['duration', 'load']);
+  });
+
+  test('version one layout migrates to version two defaults', () {
+    final decoded = ReportLayoutConfig.decode('''{
+      "version": 1,
+      "blocks": [{"id":"legacy","title":"Legacy","kind":"custom"}]
+    }''');
+
+    expect(decoded.version, 2);
+    expect(decoded.blocks.single.comparison, ReportComparison.none);
+    expect(decoded.blocks.single.showOnDashboard, isFalse);
   });
 
   test('safe row formulas support nested fields and functions', () {

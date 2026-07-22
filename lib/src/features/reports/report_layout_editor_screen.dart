@@ -169,6 +169,11 @@ class _ReportLayoutEditorScreenState
           aggregation: item.aggregation,
           filters: item.filters,
           tableFields: item.tableFields,
+          metricFormula: item.metricFormula,
+          comparison: item.comparison,
+          targetRange: item.targetRange,
+          showOnDashboard: item.showOnDashboard,
+          requiredFields: item.requiredFields,
           updatedAt: DateTime.now().toUtc(),
         ),
       ),
@@ -197,6 +202,10 @@ class _CustomBlockEditor extends StatefulWidget {
 class _CustomBlockEditorState extends State<_CustomBlockEditor> {
   late final TextEditingController _title;
   late final TextEditingController _formula;
+  late final TextEditingController _metricFormula;
+  late final TextEditingController _targetMinimum;
+  late final TextEditingController _target;
+  late final TextEditingController _targetMaximum;
   late ReportDataSource _source;
   late ReportVisualization _visual;
   late ReportAggregation _aggregation;
@@ -204,6 +213,9 @@ class _CustomBlockEditorState extends State<_CustomBlockEditor> {
   String? _valueField;
   late Set<String> _tableFields;
   late List<ReportFilter> _filters;
+  late ReportComparison _comparison;
+  late bool _showOnDashboard;
+  late Set<String> _requiredFields;
 
   List<String> get _fields => reportFields[_source]!;
 
@@ -213,6 +225,16 @@ class _CustomBlockEditorState extends State<_CustomBlockEditor> {
     final value = widget.initial;
     _title = TextEditingController(text: value?.title ?? 'Новый блок');
     _formula = TextEditingController(text: value?.rowFormula ?? '');
+    _metricFormula = TextEditingController(text: value?.metricFormula ?? '');
+    _targetMinimum = TextEditingController(
+      text: value?.targetRange.minimum?.toString() ?? '',
+    );
+    _target = TextEditingController(
+      text: value?.targetRange.target?.toString() ?? '',
+    );
+    _targetMaximum = TextEditingController(
+      text: value?.targetRange.maximum?.toString() ?? '',
+    );
     _source = value?.source ?? ReportDataSource.daily;
     _visual = value?.visualization ?? ReportVisualization.bar;
     _aggregation = value?.aggregation ?? ReportAggregation.count;
@@ -220,12 +242,19 @@ class _CustomBlockEditorState extends State<_CustomBlockEditor> {
     _valueField = value?.valueField;
     _tableFields = {...?value?.tableFields};
     _filters = [...?value?.filters];
+    _comparison = value?.comparison ?? ReportComparison.none;
+    _showOnDashboard = value?.showOnDashboard ?? false;
+    _requiredFields = {...?value?.requiredFields};
   }
 
   @override
   void dispose() {
     _title.dispose();
     _formula.dispose();
+    _metricFormula.dispose();
+    _targetMinimum.dispose();
+    _target.dispose();
+    _targetMaximum.dispose();
     super.dispose();
   }
 
@@ -392,6 +421,66 @@ class _CustomBlockEditorState extends State<_CustomBlockEditor> {
                 ),
               ],
               const SizedBox(height: 20),
+              Text('Аналитика', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _metricFormula,
+                decoration: const InputDecoration(
+                  labelText: 'Формула показателя',
+                  helperText: 'Переменные: value, previous, delta',
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<ReportComparison>(
+                isExpanded: true,
+                initialValue: _comparison,
+                decoration: const InputDecoration(labelText: 'Сравнение'),
+                items: const [
+                  DropdownMenuItem(value: ReportComparison.none, child: Text('Без сравнения')),
+                  DropdownMenuItem(value: ReportComparison.previousPeriod, child: Text('Предыдущий период')),
+                  DropdownMenuItem(value: ReportComparison.previousYear, child: Text('Прошлый год')),
+                ],
+                onChanged: (value) => setState(() => _comparison = value!),
+              ),
+              const SizedBox(height: 12),
+              _twoColumns(
+                narrow,
+                TextField(
+                  controller: _targetMinimum,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                  decoration: const InputDecoration(labelText: 'Минимум'),
+                ),
+                TextField(
+                  controller: _target,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                  decoration: const InputDecoration(labelText: 'Цель'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _targetMaximum,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                decoration: const InputDecoration(labelText: 'Максимум диапазона'),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Показывать на главной'),
+                value: _showOnDashboard,
+                onChanged: (value) => setState(() => _showOnDashboard = value),
+              ),
+              const SizedBox(height: 8),
+              Text('Обязательные поля', style: Theme.of(context).textTheme.titleMedium),
+              Wrap(
+                spacing: 7,
+                children: _fields.map((field) => FilterChip(
+                  label: Text(_fieldLabel(field)),
+                  selected: _requiredFields.contains(field),
+                  onSelected: (selected) => setState(() {
+                    selected ? _requiredFields.add(field) : _requiredFields.remove(field);
+                  }),
+                )).toList(),
+              ),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   Expanded(
@@ -456,6 +545,16 @@ class _CustomBlockEditorState extends State<_CustomBlockEditor> {
       ).showSnackBar(SnackBar(content: Text(formulaError)));
       return;
     }
+    final metricFormula = _metricFormula.text.trim();
+    final metricError = metricFormula.isEmpty
+        ? null
+        : ReportFormula(metricFormula).validate();
+    if (metricError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(metricError)),
+      );
+      return;
+    }
     Navigator.pop(
       context,
       ReportBlockDefinition(
@@ -472,6 +571,15 @@ class _CustomBlockEditorState extends State<_CustomBlockEditor> {
         aggregation: _aggregation,
         filters: _filters,
         tableFields: _tableFields.toList(),
+        metricFormula: metricFormula.isEmpty ? null : metricFormula,
+        comparison: _comparison,
+        targetRange: ReportTargetRange(
+          minimum: double.tryParse(_targetMinimum.text.replaceAll(',', '.')),
+          target: double.tryParse(_target.text.replaceAll(',', '.')),
+          maximum: double.tryParse(_targetMaximum.text.replaceAll(',', '.')),
+        ),
+        showOnDashboard: _showOnDashboard,
+        requiredFields: _requiredFields.toList(),
         updatedAt: DateTime.now().toUtc(),
       ),
     );
