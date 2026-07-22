@@ -19,12 +19,14 @@ class TaskController extends ChangeNotifier {
   static const _captureChannel = MethodChannel('dev.pavelvault/quick_capture');
   String? pendingExternalSelection;
   bool notificationsEnabled = true;
+  String? _pendingOpenedTaskId;
 
   Future<String?> takeExternalSelection() async {
     if (!Platform.isAndroid) return null;
     try {
-      pendingExternalSelection =
-          await _captureChannel.invokeMethod<String>('takeProcessText');
+      pendingExternalSelection = await _captureChannel.invokeMethod<String>(
+        'takeProcessText',
+      );
     } on PlatformException {
       pendingExternalSelection = null;
     }
@@ -33,9 +35,8 @@ class TaskController extends ChangeNotifier {
     return value?.trim().isEmpty == true ? null : value?.trim();
   }
 
-  List<TaskDefinition> get tasks => _vault.index.tasks
-      .map(TaskDefinition.fromNote)
-      .toList(growable: false);
+  List<TaskDefinition> get tasks =>
+      _vault.index.tasks.map(TaskDefinition.fromNote).toList(growable: false);
 
   List<EmbeddedTask> get embedded => [
     for (final note in _vault.index.notes)
@@ -44,8 +45,18 @@ class TaskController extends ChangeNotifier {
   ];
 
   Future<void> initializeNotifications() async {
-    await _notifications.initialize((_) {});
+    await _notifications.initialize((taskId) {
+      _pendingOpenedTaskId = taskId;
+      notifyListeners();
+    });
     await reconcileNotifications();
+  }
+
+  TaskDefinition? takeOpenedTask() {
+    final id = _pendingOpenedTaskId;
+    if (id == null) return null;
+    _pendingOpenedTaskId = null;
+    return tasks.where((task) => task.id == id).firstOrNull;
   }
 
   Future<void> reconcileNotifications() => _notifications.reconcile(
@@ -65,20 +76,22 @@ class TaskController extends ChangeNotifier {
     final values = tasks.where((task) {
       final date = task.scheduled ?? task.due;
       return switch (view) {
-        TaskView.inbox => !task.completed &&
-            task.project == null &&
-            task.scheduled == null &&
-            task.due == null,
-        TaskView.today => !task.completed &&
-            date != null &&
-            taskDay(date) == today,
-        TaskView.overdue => !task.completed &&
-            task.due != null &&
-            taskDay(task.due!).isBefore(today),
-        TaskView.week => !task.completed &&
-            date != null &&
-            !taskDay(date).isBefore(weekStart) &&
-            taskDay(date).isBefore(weekEnd),
+        TaskView.inbox =>
+          !task.completed &&
+              task.project == null &&
+              task.scheduled == null &&
+              task.due == null,
+        TaskView.today =>
+          !task.completed && date != null && taskDay(date) == today,
+        TaskView.overdue =>
+          !task.completed &&
+              task.due != null &&
+              taskDay(task.due!).isBefore(today),
+        TaskView.week =>
+          !task.completed &&
+              date != null &&
+              !taskDay(date).isBefore(weekStart) &&
+              taskDay(date).isBefore(weekEnd),
         TaskView.all => !task.completed,
         TaskView.completed => task.completed,
       };
@@ -116,7 +129,8 @@ class TaskController extends ChangeNotifier {
     final yamlList = dependencies.isEmpty
         ? '[]'
         : '[${dependencies.map(_yamlScalar).join(', ')}]';
-    final text = '''---
+    final text =
+        '''---
 type: task
 id: $id
 project: ${project == null ? '' : _yamlScalar(project)}
@@ -160,13 +174,11 @@ ${description?.trim() ?? ''}
     if (complete && isBlocked(task) && !force) {
       throw StateError('Сначала завершите зависимости задачи');
     }
-    var source = task.note.document.text;
+    var source = _withPersistentId(task, task.note.document.text);
     source = _vault.parser.updateFrontmatter(source, ['complete'], complete);
-    source = _vault.parser.updateFrontmatter(
-      source,
-      ['status'],
-      complete ? 'done' : 'todo',
-    );
+    source = _vault.parser.updateFrontmatter(source, [
+      'status',
+    ], complete ? 'done' : 'todo');
     await _sync.saveNote(task.path, source);
     if (complete && task.recurrence != null) await _createNext(task);
     await reconcileNotifications();
@@ -183,14 +195,20 @@ ${description?.trim() ?? ''}
     await setStatusId(task, value);
   }
 
-  Future<void> setStatusId(TaskDefinition task, String value) async {
-    var source = task.note.document.text;
+  Future<void> setStatusId(
+    TaskDefinition task,
+    String value, {
+    bool force = false,
+  }) async {
+    if (value == 'done') {
+      await setComplete(task, true, force: force);
+      return;
+    }
+    var source = _withPersistentId(task, task.note.document.text);
     source = _vault.parser.updateFrontmatter(source, ['status'], value);
-    source = _vault.parser.updateFrontmatter(
-      source,
-      ['complete'],
-      value == 'done',
-    );
+    source = _vault.parser.updateFrontmatter(source, [
+      'complete',
+    ], value == 'done');
     await _sync.saveNote(task.path, source);
     await reconcileNotifications();
     notifyListeners();
@@ -213,7 +231,7 @@ ${description?.trim() ?? ''}
 
   Future<void> assignProject(TaskDefinition task, String project) async {
     final source = _vault.parser.updateFrontmatter(
-      task.note.document.text,
+      _withPersistentId(task, task.note.document.text),
       ['project'],
       project,
     );
@@ -227,7 +245,7 @@ ${description?.trim() ?? ''}
 
   Future<void> setDate(TaskDefinition task, DateTime? value) async {
     final source = _vault.parser.updateFrontmatter(
-      task.note.document.text,
+      _withPersistentId(task, task.note.document.text),
       ['due'],
       value == null ? null : DateFormat('yyyy-MM-dd').format(value),
     );
@@ -238,24 +256,32 @@ ${description?.trim() ?? ''}
 
   Future<String> convertEmbedded(EmbeddedTask embedded) async => create(
     title: embedded.task.text,
-    source: '[[${embedded.note.document.path.replaceFirst(RegExp(r'\.md$'), '')}]]',
+    source:
+        '[[${embedded.note.document.path.replaceFirst(RegExp(r'\.md$'), '')}]]',
   );
 
   Future<void> _createNext(TaskDefinition task) async {
     final recurrence = TaskRecurrence.parse(task.recurrence!);
-    final basis = task.due ?? task.scheduled ?? DateTime.now();
+    final basis = task.scheduled ?? task.due ?? DateTime.now();
     final next = recurrence.next(basis);
+    final shift = next.difference(taskDay(basis));
+    final nextScheduled = task.scheduled?.add(shift);
+    final nextDue = task.due?.add(shift);
+    final nextReminder = task.remindAt?.add(shift);
     final seriesId = task.seriesId ?? task.id;
     final alreadyExists = tasks.any(
-      (item) => item.seriesId == seriesId && taskDay(item.due ?? item.scheduled ?? DateTime(0)) == next,
+      (item) =>
+          item.seriesId == seriesId &&
+          taskDay(item.scheduled ?? item.due ?? DateTime(0)) == next,
     );
     if (alreadyExists) return;
     await create(
       title: task.title,
       project: task.project,
       priority: task.priority,
-      due: task.due == null ? null : next,
-      scheduled: task.scheduled == null ? null : next,
+      due: nextDue,
+      scheduled: nextScheduled,
+      remindAt: nextReminder,
       recurrence: task.recurrence,
       seriesId: seriesId,
       previousOccurrence: task.id,
@@ -286,6 +312,11 @@ ${description?.trim() ?? ''}
   String _newId() =>
       'task-${DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36)}';
 
+  String _withPersistentId(TaskDefinition task, String source) =>
+      task.note.frontmatter['id'] == null
+      ? _vault.parser.updateFrontmatter(source, ['id'], task.id)
+      : source;
+
   String _safeFileName(String value) {
     final cleaned = value
         .trim()
@@ -297,4 +328,14 @@ ${description?.trim() ?? ''}
 
   String _yamlScalar(String value) =>
       '"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"';
+
+  @override
+  void dispose() {
+    _notifications.dispose();
+    super.dispose();
+  }
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

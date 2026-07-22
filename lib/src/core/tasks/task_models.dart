@@ -54,7 +54,8 @@ class TaskDefinition {
         _ when yaml['complete'] == true => TaskStatus.done,
         _ => TaskStatus.todo,
       },
-      statusId: yaml['status']?.toString() ??
+      statusId:
+          yaml['status']?.toString() ??
           (yaml['complete'] == true ? 'done' : 'todo'),
       priority: yaml['priority']?.toString() ?? 'medium',
       project: _text(yaml['project']),
@@ -97,7 +98,8 @@ DateTime? taskDate(Object? value) {
   return DateTime.tryParse(raw.length >= 10 ? raw.substring(0, 10) : raw);
 }
 
-DateTime taskDay(DateTime value) => DateTime(value.year, value.month, value.day);
+DateTime taskDay(DateTime value) =>
+    DateTime(value.year, value.month, value.day);
 
 String legacyTaskId(String path) {
   var hash = 0x811c9dc5;
@@ -109,7 +111,11 @@ String legacyTaskId(String path) {
 }
 
 class TaskRecurrence {
-  const TaskRecurrence({required this.frequency, this.interval = 1, this.days = const []});
+  const TaskRecurrence({
+    required this.frequency,
+    this.interval = 1,
+    this.days = const [],
+  });
 
   final String frequency;
   final int interval;
@@ -125,7 +131,15 @@ class TaskRecurrence {
     if (!const {'DAILY', 'WEEKLY', 'MONTHLY'}.contains(frequency)) {
       throw FormatException('Unsupported recurrence: $source');
     }
-    const weekDays = {'MO': 1, 'TU': 2, 'WE': 3, 'TH': 4, 'FR': 5, 'SA': 6, 'SU': 7};
+    const weekDays = {
+      'MO': 1,
+      'TU': 2,
+      'WE': 3,
+      'TH': 4,
+      'FR': 5,
+      'SA': 6,
+      'SU': 7,
+    };
     return TaskRecurrence(
       frequency: frequency!,
       interval: int.tryParse(values['INTERVAL'] ?? '')?.clamp(1, 999) ?? 1,
@@ -141,16 +155,24 @@ class TaskRecurrence {
     final day = taskDay(from);
     if (frequency == 'DAILY') return day.add(Duration(days: interval));
     if (frequency == 'MONTHLY') {
-      return DateTime(day.year, day.month + interval, day.day);
+      final targetMonth = DateTime(day.year, day.month + interval);
+      final lastDay = DateTime(targetMonth.year, targetMonth.month + 1, 0).day;
+      return DateTime(
+        targetMonth.year,
+        targetMonth.month,
+        day.day.clamp(1, lastDay),
+      );
     }
     if (days.isEmpty) return day.add(Duration(days: 7 * interval));
-    for (var offset = 1; offset <= 7 * interval; offset++) {
-      final candidate = day.add(Duration(days: offset));
-      if (days.contains(candidate.weekday) &&
-          (offset <= 7 || offset > 7 * (interval - 1))) {
-        return candidate;
+    if (interval == 1) {
+      for (var offset = 1; offset <= 7; offset++) {
+        final candidate = day.add(Duration(days: offset));
+        if (days.contains(candidate.weekday)) return candidate;
       }
     }
-    return day.add(Duration(days: 7 * interval));
+    final currentWeekStart = day.subtract(Duration(days: day.weekday - 1));
+    final targetWeekStart = currentWeekStart.add(Duration(days: 7 * interval));
+    final sortedDays = [...days]..sort();
+    return targetWeekStart.add(Duration(days: sortedDays.first - 1));
   }
 }

@@ -34,7 +34,8 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     _kanbanProject ??= projects.firstOrNull;
     return PageScaffold(
       title: 'Задачи',
-      subtitle: '${controller.select(TaskView.all).length} открытых · ${controller.embedded.where((item) => !item.task.completed).length} чекбоксов',
+      subtitle:
+          '${controller.select(TaskView.all).length} открытых · ${controller.embedded.where((item) => !item.task.completed).length} чекбоксов',
       actions: [
         IconButton(
           tooltip: 'Новая задача',
@@ -54,12 +55,25 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
               scrollDirection: Axis.horizontal,
               child: SegmentedButton<String>(
                 segments: const [
-                  ButtonSegment(value: 'list', label: Text('Список'), icon: Icon(Icons.list)),
-                  ButtonSegment(value: 'calendar', label: Text('Календарь'), icon: Icon(Icons.calendar_month)),
-                  ButtonSegment(value: 'kanban', label: Text('Kanban'), icon: Icon(Icons.view_kanban)),
+                  ButtonSegment(
+                    value: 'list',
+                    label: Text('Список'),
+                    icon: Icon(Icons.list),
+                  ),
+                  ButtonSegment(
+                    value: 'calendar',
+                    label: Text('Календарь'),
+                    icon: Icon(Icons.calendar_month),
+                  ),
+                  ButtonSegment(
+                    value: 'kanban',
+                    label: Text('Kanban'),
+                    icon: Icon(Icons.view_kanban),
+                  ),
                 ],
                 selected: {_mode},
-                onSelectionChanged: (value) => setState(() => _mode = value.first),
+                onSelectionChanged: (value) =>
+                    setState(() => _mode = value.first),
               ),
             ),
           ),
@@ -107,20 +121,29 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                   padding: EdgeInsets.all(28),
                   child: Center(child: Text('В этом представлении задач нет')),
                 ),
-              for (final task in tasks) _TaskTile(task: task, projects: projects),
-              if (_view == TaskView.inbox && embedded.any((item) => !item.task.completed)) ...[
+              for (final task in tasks)
+                _TaskTile(task: task, projects: projects),
+              if (_view == TaskView.inbox &&
+                  embedded.any((item) => !item.task.completed)) ...[
                 const Padding(
                   padding: EdgeInsets.fromLTRB(8, 20, 8, 8),
-                  child: Text('Чекбоксы в заметках', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text(
+                    'Чекбоксы в заметках',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
-                for (final item in embedded.where((item) => !item.task.completed))
+                for (final item in embedded.where(
+                  (item) => !item.task.completed,
+                ))
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.check_box_outline_blank),
                       title: Text(item.task.text),
                       subtitle: Text(item.note.title),
                       trailing: TextButton(
-                        onPressed: () => ref.read(taskControllerProvider).convertEmbedded(item),
+                        onPressed: () => ref
+                            .read(taskControllerProvider)
+                            .convertEmbedded(item),
                         child: const Text('В задачу'),
                       ),
                       onTap: () => _open(item.note),
@@ -150,21 +173,37 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
         final list = ListView(
           padding: const EdgeInsets.all(10),
           children: [
-            Text(DateFormat('d MMMM yyyy', 'ru').format(_calendarDay), style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              DateFormat('d MMMM yyyy', 'ru').format(_calendarDay),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
-            if (tasks.isEmpty) const Card(child: ListTile(title: Text('Задач на эту дату нет'))),
+            if (tasks.isEmpty)
+              const Card(child: ListTile(title: Text('Задач на эту дату нет'))),
             for (final task in tasks) _TaskTile(task: task, projects: const []),
           ],
         );
         return constraints.maxWidth >= 760
-            ? Row(children: [Expanded(child: calendar), Expanded(child: list)])
-            : Column(children: [calendar, Expanded(child: list)]);
+            ? Row(
+                children: [
+                  Expanded(child: calendar),
+                  Expanded(child: list),
+                ],
+              )
+            : Column(
+                children: [
+                  calendar,
+                  Expanded(child: list),
+                ],
+              );
       },
     );
   }
 
   Widget _kanban(TaskController controller, List<String> projects) {
-    if (projects.isEmpty) return const Center(child: Text('Сначала создайте проект'));
+    if (projects.isEmpty) {
+      return const Center(child: Text('Сначала создайте проект'));
+    }
     final selected = _kanbanProject ?? projects.first;
     final projectNote = ref
         .read(vaultControllerProvider)
@@ -172,7 +211,8 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
         .projects
         .where(
           (note) =>
-              (note.frontmatter['project']?.toString() ?? note.title) == selected,
+              (note.frontmatter['project']?.toString() ?? note.title) ==
+              selected,
         )
         .firstOrNull;
     final tasks = controller.tasks
@@ -189,7 +229,12 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 child: DropdownButtonFormField<String>(
                   initialValue: selected,
                   decoration: const InputDecoration(labelText: 'Проект'),
-                  items: projects.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+                  items: projects
+                      .map(
+                        (item) =>
+                            DropdownMenuItem(value: item, child: Text(item)),
+                      )
+                      .toList(),
                   onChanged: (value) => setState(() => _kanbanProject = value),
                 ),
               ),
@@ -211,7 +256,8 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             children: [
               for (final column in columns)
                 DragTarget<TaskDefinition>(
-                  onAcceptWithDetails: (details) => controller.setStatusId(details.data, column.id),
+                  onAcceptWithDetails: (details) =>
+                      _setKanbanStatus(controller, details.data, column.id),
                   builder: (context, candidates, _) => Container(
                     width: 290,
                     margin: const EdgeInsets.only(right: 10),
@@ -224,17 +270,28 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                     ),
                     child: ListView(
                       children: [
-                        Text(column.title, style: Theme.of(context).textTheme.titleMedium),
+                        Text(
+                          column.title,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                         const SizedBox(height: 8),
-                        for (final task in tasks.where((item) => item.statusId == column.id))
+                        for (final task in tasks.where(
+                          (item) => item.statusId == column.id,
+                        ))
                           LongPressDraggable<TaskDefinition>(
                             data: task,
                             feedback: Material(
                               elevation: 8,
                               borderRadius: BorderRadius.circular(14),
-                              child: SizedBox(width: 260, child: _KanbanCard(task: task)),
+                              child: SizedBox(
+                                width: 260,
+                                child: _KanbanCard(task: task),
+                              ),
                             ),
-                            childWhenDragging: Opacity(opacity: .35, child: _KanbanCard(task: task)),
+                            childWhenDragging: Opacity(
+                              opacity: .35,
+                              child: _KanbanCard(task: task),
+                            ),
                             child: _KanbanCard(task: task),
                           ),
                       ],
@@ -248,16 +305,52 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     );
   }
 
+  Future<void> _setKanbanStatus(
+    TaskController controller,
+    TaskDefinition task,
+    String status,
+  ) async {
+    try {
+      await controller.setStatusId(task, status);
+    } on StateError {
+      if (!mounted) return;
+      final force = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Есть незавершённые зависимости'),
+          content: const Text('Переместить задачу в «Готово» принудительно?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Завершить'),
+            ),
+          ],
+        ),
+      );
+      if (force == true) {
+        await controller.setStatusId(task, status, force: true);
+      }
+    }
+  }
+
   List<({String id, String title})> _kanbanColumns(ParsedNote? project) {
     final raw = project?.frontmatter['kanban_columns'];
     if (raw is List) {
-      final parsed = raw.whereType<Map>().map((item) {
-        final map = Map<String, Object?>.from(item);
-        return (
-          id: map['id']?.toString() ?? '',
-          title: map['title']?.toString() ?? '',
-        );
-      }).where((item) => item.id.isNotEmpty && item.title.isNotEmpty).toList();
+      final parsed = raw
+          .whereType<Map>()
+          .map((item) {
+            final map = Map<String, Object?>.from(item);
+            return (
+              id: map['id']?.toString() ?? '',
+              title: map['title']?.toString() ?? '',
+            );
+          })
+          .where((item) => item.id.isNotEmpty && item.title.isNotEmpty)
+          .toList();
       if (parsed.isNotEmpty) return parsed;
     }
     return const [
@@ -274,7 +367,10 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     List<({String id, String title})> current,
   ) async {
     final editors = current
-        .map((item) => (id: item.id, text: TextEditingController(text: item.title)))
+        .map(
+          (item) =>
+              (id: item.id, text: TextEditingController(text: item.title)),
+        )
         .toList();
     final result = await showDialog<List<({String id, String title})>>(
       context: context,
@@ -297,7 +393,10 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(
               context,
@@ -317,9 +416,9 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     if (result != null) await controller.setKanbanColumns(project, result);
   }
 
-  void _open(ParsedNote note) => Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => NoteScreen(note: note)),
-  );
+  void _open(ParsedNote note) => Navigator.of(
+    context,
+  ).push(MaterialPageRoute(builder: (_) => NoteScreen(note: note)));
 }
 
 class _TaskTile extends ConsumerWidget {
@@ -347,32 +446,50 @@ class _TaskTile extends ConsumerWidget {
                   title: const Text('Есть незавершённые зависимости'),
                   content: const Text('Завершить задачу принудительно?'),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
-                    FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Завершить')),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Отмена'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Завершить'),
+                    ),
                   ],
                 ),
               );
-              if (force == true) await controller.setComplete(task, true, force: true);
+              if (force == true) {
+                await controller.setComplete(task, true, force: true);
+              }
             }
           },
         ),
-        title: Text(task.title, style: task.completed ? const TextStyle(decoration: TextDecoration.lineThrough) : null),
-        subtitle: Text([
-          task.project ?? 'Inbox',
-          if (date != null) DateFormat('d MMM', 'ru').format(date),
-          if (blocked) 'заблокирована',
-          if (task.recurrence != null) 'повторяется',
-        ].join(' · ')),
+        title: Text(
+          task.title,
+          style: task.completed
+              ? const TextStyle(decoration: TextDecoration.lineThrough)
+              : null,
+        ),
+        subtitle: Text(
+          [
+            task.project ?? 'Inbox',
+            if (date != null) DateFormat('d MMM', 'ru').format(date),
+            if (blocked) 'заблокирована',
+            if (task.recurrence != null) 'повторяется',
+          ].join(' · '),
+        ),
         trailing: projects.isEmpty
             ? const Icon(Icons.chevron_right)
             : PopupMenuButton<String>(
                 tooltip: 'Назначить проект',
                 onSelected: (value) => controller.assignProject(task, value),
                 itemBuilder: (_) => [
-                  for (final project in projects) PopupMenuItem(value: project, child: Text(project)),
+                  for (final project in projects)
+                    PopupMenuItem(value: project, child: Text(project)),
                 ],
               ),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => NoteScreen(note: task.note))),
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => NoteScreen(note: task.note))),
       ),
     );
   }
@@ -391,7 +508,11 @@ class _KanbanCard extends StatelessWidget {
         children: [
           Text(task.title, style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 5),
-          Text(task.due == null ? task.priority : '${task.priority} · ${DateFormat('d MMM', 'ru').format(task.due!)}'),
+          Text(
+            task.due == null
+                ? task.priority
+                : '${task.priority} · ${DateFormat('d MMM', 'ru').format(task.due!)}',
+          ),
         ],
       ),
     ),

@@ -9,9 +9,11 @@ import '../features/sync/sync_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/tasks/tasks_screen.dart';
 import '../features/projects/project_forms.dart';
+import '../features/vault/note_screen.dart';
 import '../features/vault/vault_browser_screen.dart';
 import '../shared/app_motion.dart';
 import 'providers.dart';
+import 'task_controller.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -22,6 +24,8 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell>
     with WidgetsBindingObserver {
   var _screenIndex = 0;
+  var _openingNotification = false;
+  late final TaskController _taskController;
   static const _destinations = <NavigationDestination>[
     NavigationDestination(
       icon: Icon(Icons.space_dashboard_outlined),
@@ -69,7 +73,12 @@ class _AppShellState extends ConsumerState<AppShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _taskController = ref.read(taskControllerProvider)
+      ..addListener(_openNotificationTask);
     WidgetsBinding.instance.addPostFrameCallback((_) => _openExternalCapture());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _openNotificationTask(),
+    );
   }
 
   Future<void> _openExternalCapture() async {
@@ -83,10 +92,8 @@ class _AppShellState extends ConsumerState<AppShell>
         .toList(growable: false);
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => CreateTaskScreen(
-          projects: projects,
-          initialTitle: text,
-        ),
+        builder: (_) =>
+            CreateTaskScreen(projects: projects, initialTitle: text),
       ),
     );
   }
@@ -94,7 +101,22 @@ class _AppShellState extends ConsumerState<AppShell>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _taskController.removeListener(_openNotificationTask);
     super.dispose();
+  }
+
+  void _openNotificationTask() {
+    if (_openingNotification || !mounted) return;
+    final task = _taskController.takeOpenedTask();
+    if (task == null) return;
+    _openingNotification = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => NoteScreen(note: task.note)));
+      _openingNotification = false;
+    });
   }
 
   @override

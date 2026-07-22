@@ -8,7 +8,8 @@ import 'package:pavel_vault/src/core/vault/vault_models.dart';
 
 void main() {
   test('reads the open Markdown task schema', () {
-    final task = TaskDefinition.fromNote(_note('Tasks/Test.md', '''---
+    final task = TaskDefinition.fromNote(
+      _note('Tasks/Test.md', '''---
 type: task
 id: task-42
 status: in-progress
@@ -22,7 +23,8 @@ series_id: series-1
 depends_on: [task-1, task-2]
 ---
 # Проверить задачи
-'''));
+'''),
+    );
 
     expect(task.id, 'task-42');
     expect(task.status, TaskStatus.inProgress);
@@ -33,18 +35,22 @@ depends_on: [task-1, task-2]
   });
 
   test('legacy task gets a stable path-derived id', () {
-    final first = TaskDefinition.fromNote(_note('Tasks/Legacy.md', '''---
+    final first = TaskDefinition.fromNote(
+      _note('Tasks/Legacy.md', '''---
 type: task
 complete: false
 ---
 # Legacy
-'''));
-    final second = TaskDefinition.fromNote(_note('Tasks/Legacy.md', '''---
+'''),
+    );
+    final second = TaskDefinition.fromNote(
+      _note('Tasks/Legacy.md', '''---
 type: task
 complete: false
 ---
 # Changed title
-'''));
+'''),
+    );
     expect(first.id, startsWith('legacy-'));
     expect(second.id, first.id);
   });
@@ -64,11 +70,28 @@ complete: false
     );
   });
 
-  test('unsupported recurrence is rejected', () {
+  test('monthly recurrence clamps to the target month last day', () {
     expect(
-      () => TaskRecurrence.parse('FREQ=YEARLY'),
-      throwsFormatException,
+      TaskRecurrence.parse('FREQ=MONTHLY').next(DateTime(2026, 1, 31)),
+      DateTime(2026, 2, 28),
     );
+    expect(
+      TaskRecurrence.parse('FREQ=MONTHLY').next(DateTime(2028, 1, 31)),
+      DateTime(2028, 2, 29),
+    );
+  });
+
+  test('weekly BYDAY starts in the requested interval week', () {
+    expect(
+      TaskRecurrence.parse(
+        'FREQ=WEEKLY;INTERVAL=2;BYDAY=FR',
+      ).next(DateTime(2026, 7, 22)),
+      DateTime(2026, 8, 7),
+    );
+  });
+
+  test('unsupported recurrence is rejected', () {
+    expect(() => TaskRecurrence.parse('FREQ=YEARLY'), throwsFormatException);
   });
 }
 
