@@ -5,12 +5,14 @@ import '../core/crypto/credential_store.dart';
 import '../core/crypto/encrypted_object_store.dart';
 import '../core/sync/webdav_profile.dart';
 import 'vault_controller.dart';
+import 'task_controller.dart';
 
 class SettingsController extends ChangeNotifier {
-  SettingsController(this._credentials, this._vault);
+  SettingsController(this._credentials, this._vault, [this._tasks]);
 
   final CredentialStore _credentials;
   final VaultController _vault;
+  final TaskController? _tasks;
   List<WebDavProfile> _profiles = const [];
   String? _activeProfileId;
 
@@ -18,11 +20,17 @@ class SettingsController extends ChangeNotifier {
   String attachmentFolder = 'Attachments';
   MotionPreference motionPreference = MotionPreference.expressive;
   bool initialized = false;
+  bool taskNotificationsEnabled = true;
+  int taskReminderHour = 9;
 
   Future<void> initialize() async {
     imageCacheLimitBytes = await _credentials.readImageCacheLimit();
     attachmentFolder = await _credentials.readAttachmentFolder();
     motionPreference = await _credentials.readMotionPreference();
+    taskNotificationsEnabled =
+        await _credentials.readTaskNotificationsEnabled();
+    taskReminderHour = await _credentials.readTaskReminderHour();
+    await _tasks?.configureNotifications(taskNotificationsEnabled);
     initialized = true;
     notifyListeners();
   }
@@ -49,6 +57,19 @@ class SettingsController extends ChangeNotifier {
   Future<void> setMotionPreference(MotionPreference value) async {
     motionPreference = value;
     await _credentials.saveMotionPreference(value);
+    notifyListeners();
+  }
+
+  Future<void> setTaskNotificationsEnabled(bool value) async {
+    taskNotificationsEnabled = value;
+    await _credentials.saveTaskNotificationsEnabled(value);
+    await _tasks?.configureNotifications(value);
+    notifyListeners();
+  }
+
+  Future<void> setTaskReminderHour(int value) async {
+    taskReminderHour = value.clamp(0, 23);
+    await _credentials.saveTaskReminderHour(taskReminderHour);
     notifyListeners();
   }
 

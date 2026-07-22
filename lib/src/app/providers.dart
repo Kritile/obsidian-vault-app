@@ -28,6 +28,7 @@ final settingsControllerProvider = ChangeNotifierProvider<SettingsController>((
   return SettingsController(
     ref.read(credentialStoreProvider),
     ref.read(vaultControllerProvider),
+    ref.read(taskControllerProvider),
   );
 });
 

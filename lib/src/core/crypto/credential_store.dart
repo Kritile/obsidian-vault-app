@@ -189,6 +189,23 @@ class CredentialStore {
   Future<void> saveMotionPreference(MotionPreference value) =>
       _storage.write(key: 'settings.motion', value: value.name);
 
+  Future<bool> readTaskNotificationsEnabled() async =>
+      await _storage.read(key: 'settings.taskNotifications') != 'false';
+
+  Future<void> saveTaskNotificationsEnabled(bool value) => _storage.write(
+    key: 'settings.taskNotifications',
+    value: value.toString(),
+  );
+
+  Future<int> readTaskReminderHour() async =>
+      int.tryParse(await _storage.read(key: 'settings.taskReminderHour') ?? '') ??
+      9;
+
+  Future<void> saveTaskReminderHour(int value) => _storage.write(
+    key: 'settings.taskReminderHour',
+    value: value.toString(),
+  );
+
   Future<Duration> readAutoLockDelay() async {
     final seconds = int.tryParse(
       await _storage.read(key: 'settings.autoLockSeconds') ?? '',

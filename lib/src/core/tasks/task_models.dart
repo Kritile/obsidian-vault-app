@@ -9,6 +9,7 @@ class TaskDefinition {
     required this.note,
     required this.id,
     required this.status,
+    required this.statusId,
     required this.priority,
     required this.dependencies,
     this.project,
@@ -23,6 +24,7 @@ class TaskDefinition {
   final ParsedNote note;
   final String id;
   final TaskStatus status;
+  final String statusId;
   final String priority;
   final String? project;
   final String? daily;
@@ -52,6 +54,8 @@ class TaskDefinition {
         _ when yaml['complete'] == true => TaskStatus.done,
         _ => TaskStatus.todo,
       },
+      statusId: yaml['status']?.toString() ??
+          (yaml['complete'] == true ? 'done' : 'todo'),
       priority: yaml['priority']?.toString() ?? 'medium',
       project: _text(yaml['project']),
       daily: _text(yaml['daily']),

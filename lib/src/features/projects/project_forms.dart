@@ -113,6 +113,8 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   DateTime? _scheduled;
   DateTime? _remindAt;
   String? _recurrence;
+  String? _daily;
+  final Set<String> _dependencies = {};
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -243,6 +245,67 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
             onChanged: (value) => setState(() => _recurrence = value),
           ),
           const SizedBox(height: 12),
+          DropdownButtonFormField<String?>(
+            isExpanded: true,
+            initialValue: _daily,
+            decoration: const InputDecoration(
+              labelText: 'Связанный ежедневник',
+              prefixIcon: Icon(Icons.today_outlined),
+            ),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('Не связан'),
+              ),
+              ...ref
+                  .read(vaultControllerProvider)
+                  .index
+                  .dailies
+                  .map(
+                    (note) => DropdownMenuItem<String?>(
+                      value:
+                          '[[${note.document.path.replaceFirst(RegExp(r'\.md$'), '')}]]',
+                      child: Text(note.title),
+                    ),
+                  ),
+            ],
+            onChanged: (value) => setState(() => _daily = value),
+          ),
+          const SizedBox(height: 8),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: Text(
+              _dependencies.isEmpty
+                  ? 'Без зависимостей'
+                  : 'Зависимости: ${_dependencies.length}',
+            ),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 7,
+                  runSpacing: 5,
+                  children: ref
+                      .read(taskControllerProvider)
+                      .tasks
+                      .where((task) => !task.completed)
+                      .map(
+                        (task) => FilterChip(
+                          label: Text(task.title),
+                          selected: _dependencies.contains(task.id),
+                          onSelected: (selected) => setState(() {
+                            selected
+                                ? _dependencies.add(task.id)
+                                : _dependencies.remove(task.id);
+                          }),
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           TextFormField(
             controller: _description,
             minLines: 4,
@@ -278,6 +341,8 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
           scheduled: _scheduled,
           remindAt: _remindAt,
           recurrence: _recurrence,
+          daily: _daily,
+          dependencies: _dependencies.toList(growable: false),
           description: _description.text.trim(),
           source: widget.source,
         );
@@ -308,7 +373,13 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(
-        _remindAt ?? DateTime(date.year, date.month, date.day, 9),
+        _remindAt ??
+            DateTime(
+              date.year,
+              date.month,
+              date.day,
+              ref.read(settingsControllerProvider).taskReminderHour,
+            ),
       ),
     );
     if (time != null) {

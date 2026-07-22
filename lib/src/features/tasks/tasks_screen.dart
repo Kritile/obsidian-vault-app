@@ -166,24 +166,41 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   Widget _kanban(TaskController controller, List<String> projects) {
     if (projects.isEmpty) return const Center(child: Text('Сначала создайте проект'));
     final selected = _kanbanProject ?? projects.first;
+    final projectNote = ref
+        .read(vaultControllerProvider)
+        .index
+        .projects
+        .where(
+          (note) =>
+              (note.frontmatter['project']?.toString() ?? note.title) == selected,
+        )
+        .firstOrNull;
     final tasks = controller.tasks
         .where((task) => task.project == selected)
         .toList();
-    const columns = [
-      (TaskStatus.todo, 'Запланировано'),
-      (TaskStatus.inProgress, 'В работе'),
-      (TaskStatus.blocked, 'Заблокировано'),
-      (TaskStatus.done, 'Готово'),
-    ];
+    final columns = _kanbanColumns(projectNote);
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: DropdownButtonFormField<String>(
-            initialValue: selected,
-            decoration: const InputDecoration(labelText: 'Проект'),
-            items: projects.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
-            onChanged: (value) => setState(() => _kanbanProject = value),
+          child: Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: selected,
+                  decoration: const InputDecoration(labelText: 'Проект'),
+                  items: projects.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+                  onChanged: (value) => setState(() => _kanbanProject = value),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Настроить колонки',
+                onPressed: projectNote == null
+                    ? null
+                    : () => _editKanban(controller, projectNote, columns),
+                icon: const Icon(Icons.tune),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 10),
@@ -194,7 +211,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             children: [
               for (final column in columns)
                 DragTarget<TaskDefinition>(
-                  onAcceptWithDetails: (details) => controller.setStatus(details.data, column.$1),
+                  onAcceptWithDetails: (details) => controller.setStatusId(details.data, column.id),
                   builder: (context, candidates, _) => Container(
                     width: 290,
                     margin: const EdgeInsets.only(right: 10),
@@ -207,9 +224,9 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                     ),
                     child: ListView(
                       children: [
-                        Text(column.$2, style: Theme.of(context).textTheme.titleMedium),
+                        Text(column.title, style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 8),
-                        for (final task in tasks.where((item) => item.status == column.$1))
+                        for (final task in tasks.where((item) => item.statusId == column.id))
                           LongPressDraggable<TaskDefinition>(
                             data: task,
                             feedback: Material(
@@ -229,6 +246,75 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
         ),
       ],
     );
+  }
+
+  List<({String id, String title})> _kanbanColumns(ParsedNote? project) {
+    final raw = project?.frontmatter['kanban_columns'];
+    if (raw is List) {
+      final parsed = raw.whereType<Map>().map((item) {
+        final map = Map<String, Object?>.from(item);
+        return (
+          id: map['id']?.toString() ?? '',
+          title: map['title']?.toString() ?? '',
+        );
+      }).where((item) => item.id.isNotEmpty && item.title.isNotEmpty).toList();
+      if (parsed.isNotEmpty) return parsed;
+    }
+    return const [
+      (id: 'todo', title: 'Запланировано'),
+      (id: 'in-progress', title: 'В работе'),
+      (id: 'blocked', title: 'Заблокировано'),
+      (id: 'done', title: 'Готово'),
+    ];
+  }
+
+  Future<void> _editKanban(
+    TaskController controller,
+    ParsedNote project,
+    List<({String id, String title})> current,
+  ) async {
+    final editors = current
+        .map((item) => (id: item.id, text: TextEditingController(text: item.title)))
+        .toList();
+    final result = await showDialog<List<({String id, String title})>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Колонки Kanban'),
+        content: SizedBox(
+          width: 420,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final editor in editors)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: TextField(
+                    controller: editor.text,
+                    decoration: InputDecoration(labelText: editor.id),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              context,
+              editors
+                  .map((item) => (id: item.id, title: item.text.text.trim()))
+                  .where((item) => item.title.isNotEmpty)
+                  .toList(),
+            ),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    for (final editor in editors) {
+      editor.text.dispose();
+    }
+    if (result != null) await controller.setKanbanColumns(project, result);
   }
 
   void _open(ParsedNote note) => Navigator.of(context).push(

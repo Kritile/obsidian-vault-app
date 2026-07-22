@@ -26,6 +26,11 @@ archived: ${status == 'archived'}
 created: $today
 due:
 tags: [project]
+kanban_columns:
+  - {id: todo, title: Запланировано}
+  - {id: in-progress, title: В работе}
+  - {id: blocked, title: Заблокировано}
+  - {id: done, title: Готово}
 ---
 
 # $title

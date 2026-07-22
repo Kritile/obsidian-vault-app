@@ -86,26 +86,37 @@ class TaskNotificationService implements TaskNotificationScheduler {
         }
         continue;
       }
-      await _plugin.zonedSchedule(
-        id: id,
-        title: task.title,
-        body: task.project == null ? 'Задача Vellum' : task.project!,
-        scheduledDate: tz.TZDateTime.from(at, tz.local),
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'vellum_tasks',
-            'Напоминания о задачах',
-            channelDescription: 'Сроки Markdown-задач Vellum',
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
-          windows: WindowsNotificationDetails(),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        payload: task.id,
-      );
+      try {
+        await _schedule(task, id, at, AndroidScheduleMode.exactAllowWhileIdle);
+      } catch (_) {
+        await _schedule(task, id, at, AndroidScheduleMode.inexactAllowWhileIdle);
+      }
     }
   }
+
+  Future<void> _schedule(
+    TaskDefinition task,
+    int id,
+    DateTime at,
+    AndroidScheduleMode mode,
+  ) => _plugin.zonedSchedule(
+    id: id,
+    title: task.title,
+    body: task.project == null ? 'Задача Vellum' : task.project!,
+    scheduledDate: tz.TZDateTime.from(at, tz.local),
+    notificationDetails: const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'vellum_tasks',
+        'Напоминания о задачах',
+        channelDescription: 'Сроки Markdown-задач Vellum',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      windows: WindowsNotificationDetails(),
+    ),
+    androidScheduleMode: mode,
+    payload: task.id,
+  );
 
   Future<void> _show(int id, TaskDefinition task) => _plugin.show(
     id: id,

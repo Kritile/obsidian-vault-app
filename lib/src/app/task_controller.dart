@@ -18,6 +18,7 @@ class TaskController extends ChangeNotifier {
   final TaskNotificationScheduler _notifications;
   static const _captureChannel = MethodChannel('dev.pavelvault/quick_capture');
   String? pendingExternalSelection;
+  bool notificationsEnabled = true;
 
   Future<String?> takeExternalSelection() async {
     if (!Platform.isAndroid) return null;
@@ -47,7 +48,15 @@ class TaskController extends ChangeNotifier {
     await reconcileNotifications();
   }
 
-  Future<void> reconcileNotifications() => _notifications.reconcile(tasks);
+  Future<void> reconcileNotifications() => _notifications.reconcile(
+    notificationsEnabled ? tasks : const <TaskDefinition>[],
+  );
+
+  Future<void> configureNotifications(bool enabled) async {
+    notificationsEnabled = enabled;
+    await _notifications.reconcile(enabled ? tasks : const <TaskDefinition>[]);
+    notifyListeners();
+  }
 
   List<TaskDefinition> select(TaskView view, {DateTime? now}) {
     final today = taskDay(now ?? DateTime.now());
@@ -165,21 +174,40 @@ ${description?.trim() ?? ''}
   }
 
   Future<void> setStatus(TaskDefinition task, TaskStatus status) async {
-    var source = task.note.document.text;
     final value = switch (status) {
       TaskStatus.todo => 'todo',
       TaskStatus.inProgress => 'in-progress',
       TaskStatus.blocked => 'blocked',
       TaskStatus.done => 'done',
     };
+    await setStatusId(task, value);
+  }
+
+  Future<void> setStatusId(TaskDefinition task, String value) async {
+    var source = task.note.document.text;
     source = _vault.parser.updateFrontmatter(source, ['status'], value);
     source = _vault.parser.updateFrontmatter(
       source,
       ['complete'],
-      status == TaskStatus.done,
+      value == 'done',
     );
     await _sync.saveNote(task.path, source);
     await reconcileNotifications();
+    notifyListeners();
+  }
+
+  Future<void> setKanbanColumns(
+    ParsedNote project,
+    List<({String id, String title})> columns,
+  ) async {
+    final source = _vault.parser.updateFrontmatter(
+      project.document.text,
+      ['kanban_columns'],
+      columns
+          .map((item) => <String, Object?>{'id': item.id, 'title': item.title})
+          .toList(growable: false),
+    );
+    await _sync.saveNote(project.document.path, source);
     notifyListeners();
   }
 

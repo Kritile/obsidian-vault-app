@@ -96,6 +96,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 22),
+          _Header(icon: Icons.notifications_outlined, title: 'Задачи'),
+          const SizedBox(height: 8),
+          Card(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  title: const Text('Системные напоминания'),
+                  subtitle: const Text(
+                    'Расписание восстанавливается из Markdown-задач',
+                  ),
+                  value: settings.taskNotificationsEnabled,
+                  onChanged: settings.setTaskNotificationsEnabled,
+                ),
+                ListTile(
+                  enabled: settings.taskNotificationsEnabled,
+                  leading: const Icon(Icons.schedule),
+                  title: const Text('Время по умолчанию'),
+                  trailing: Text(
+                    '${settings.taskReminderHour.toString().padLeft(2, '0')}:00',
+                  ),
+                  onTap: () async {
+                    final value = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay(
+                        hour: settings.taskReminderHour,
+                        minute: 0,
+                      ),
+                    );
+                    if (value != null) {
+                      await settings.setTaskReminderHour(value.hour);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
           _Header(icon: Icons.storage_outlined, title: 'Управление памятью'),
           const SizedBox(height: 8),
           FutureBuilder<StorageUsage>(
