@@ -15,13 +15,22 @@ class SettingsController extends ChangeNotifier {
   String? _activeProfileId;
 
   int imageCacheLimitBytes = 250 * 1024 * 1024;
+  String attachmentFolder = 'Attachments';
   MotionPreference motionPreference = MotionPreference.expressive;
   bool initialized = false;
 
   Future<void> initialize() async {
     imageCacheLimitBytes = await _credentials.readImageCacheLimit();
+    attachmentFolder = await _credentials.readAttachmentFolder();
     motionPreference = await _credentials.readMotionPreference();
     initialized = true;
+    notifyListeners();
+  }
+
+  Future<void> setAttachmentFolder(String value) async {
+    final normalized = value.trim().replaceAll(RegExp(r'^/+|/+$'), '');
+    attachmentFolder = normalized.isEmpty ? 'Attachments' : normalized;
+    await _credentials.saveAttachmentFolder(attachmentFolder);
     notifyListeners();
   }
 

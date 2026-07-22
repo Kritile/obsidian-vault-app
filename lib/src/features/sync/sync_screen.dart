@@ -41,6 +41,55 @@ class SyncScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Локальные изменения',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              if (controller.queue.any(
+                (item) => item.state == SyncQueueState.error,
+              ))
+                TextButton.icon(
+                  onPressed: controller.retryPending,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Повторить'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (controller.queue.isEmpty)
+            const Card(
+              child: ListTile(
+                leading: Icon(Icons.cloud_done_outlined),
+                title: Text('Необработанных изменений нет'),
+              ),
+            ),
+          for (final item in controller.queue)
+            Card(
+              child: ListTile(
+                leading: Icon(_queueIcon(item.state)),
+                title: Text(
+                  item.kind == SyncOperationKind.move
+                      ? '${item.path} → ${item.destinationPath}'
+                      : item.path,
+                ),
+                subtitle: Text(
+                  '${_queueLabel(item.state)}${item.error == null ? '' : '\n${item.error}'}',
+                ),
+                isThreeLine: item.error != null,
+                trailing: item.state == SyncQueueState.error
+                    ? IconButton(
+                        tooltip: 'Повторить отправку',
+                        onPressed: () => controller.retry(item.path),
+                        icon: const Icon(Icons.refresh),
+                      )
+                    : null,
+              ),
+            ),
+          const SizedBox(height: 18),
           Text('Конфликты', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           if (controller.conflicts.isEmpty)
@@ -66,6 +115,18 @@ class SyncScreen extends ConsumerWidget {
       ),
     );
   }
+
+  static IconData _queueIcon(SyncQueueState state) => switch (state) {
+    SyncQueueState.waiting => Icons.schedule,
+    SyncQueueState.sending => Icons.cloud_upload_outlined,
+    SyncQueueState.error => Icons.error_outline,
+  };
+
+  static String _queueLabel(SyncQueueState state) => switch (state) {
+    SyncQueueState.waiting => 'Ожидает отправки',
+    SyncQueueState.sending => 'Отправляется',
+    SyncQueueState.error => 'Ошибка отправки',
+  };
 
   Future<void> _resolve(
     BuildContext context,

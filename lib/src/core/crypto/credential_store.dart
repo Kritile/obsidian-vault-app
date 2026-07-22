@@ -172,6 +172,12 @@ class CredentialStore {
   Future<void> saveImageCacheLimit(int value) =>
       _storage.write(key: 'settings.imageCacheLimit', value: value.toString());
 
+  Future<String> readAttachmentFolder() async =>
+      await _storage.read(key: 'settings.attachmentFolder') ?? 'Attachments';
+
+  Future<void> saveAttachmentFolder(String value) =>
+      _storage.write(key: 'settings.attachmentFolder', value: value);
+
   Future<MotionPreference> readMotionPreference() async {
     final value = await _storage.read(key: 'settings.motion');
     return MotionPreference.values

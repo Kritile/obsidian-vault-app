@@ -7,11 +7,13 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:dio/dio.dart';
 
 import '../crypto/encrypted_object_store.dart';
 import '../vault/vault_models.dart';
 import '../vault/vault_repository.dart';
 import 'sync_models.dart';
+import 'storage_capacity_service.dart';
 import 'webdav_client.dart';
 import '../../shared/app_log.dart';
 
@@ -21,19 +23,29 @@ class SyncEngine {
     required EncryptedObjectStore store,
     required WebDavClient remote,
     void Function(SyncProgress progress)? onProgress,
+    void Function(List<SyncQueueEntry> entries)? onQueueChanged,
+    StorageCapacityService capacity = const StorageCapacityService(),
   }) : _local = local,
        _store = store,
        _remote = remote,
-       _onProgress = onProgress;
+       _onProgress = onProgress,
+       onQueueChanged = onQueueChanged,
+       _capacity = capacity;
 
   static const _stateKey = '__sync_state__';
+  static const _outboxKey = '__sync_outbox_v1__';
   final VaultRepository _local;
   final EncryptedObjectStore _store;
   final WebDavClient _remote;
+  final StorageCapacityService _capacity;
   final void Function(SyncProgress progress)? _onProgress;
+  void Function(List<SyncQueueEntry> entries)? onQueueChanged;
   final _sha256 = Sha256();
   final Queue<_QueueEntry> _operations = Queue<_QueueEntry>();
   final Map<String, _FileQueueEntry> _pendingFiles = {};
+  final Map<String, SyncQueueEntry> _outbox = {};
+  bool _outboxLoaded = false;
+  Future<void> _outboxWrite = Future.value();
   bool _draining = false;
   bool _closed = false;
   Completer<void>? _idleCompleter;
@@ -49,10 +61,95 @@ class SyncEngine {
     if (_closed) return Future.error(_closedError());
     final pending = _pendingFiles[path];
     if (pending != null) return pending.future;
-    final operation = _FileQueueEntry(path, () => _synchronizeFile(path));
+    _outbox[path] = SyncQueueEntry(
+      path: path,
+      state: SyncQueueState.waiting,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    _emitQueue();
+    unawaited(_saveOutbox());
+    final operation = _FileQueueEntry(path, () => _runTrackedFile(path));
     _pendingFiles[path] = operation;
     _enqueue(operation);
     return operation.future;
+  }
+
+  Future<SyncResult> synchronizeMove(String from, String to) {
+    if (_closed) return Future.error(_closedError());
+    final pending = _pendingFiles[from];
+    if (pending != null) return pending.future;
+    _outbox[from] = SyncQueueEntry(
+      path: from,
+      destinationPath: to,
+      kind: SyncOperationKind.move,
+      state: SyncQueueState.waiting,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    _emitQueue();
+    unawaited(_saveOutbox());
+    final operation = _FileQueueEntry(from, () => _runTrackedMove(from, to));
+    _pendingFiles[from] = operation;
+    _enqueue(operation);
+    return operation.future;
+  }
+
+  List<SyncQueueEntry> get queue => _orderedOutbox();
+
+  Future<void> restorePending() async {
+    if (_closed) return;
+    await _loadOutbox();
+    for (final entry in [..._outbox.values]) {
+      if ((entry.state == SyncQueueState.waiting || entry.retryable) &&
+          !_pendingFiles.containsKey(entry.path) &&
+          entry.kind != SyncOperationKind.delete) {
+        final operation = _FileQueueEntry(
+          entry.path,
+          () =>
+              entry.kind == SyncOperationKind.move &&
+                  entry.destinationPath != null
+              ? _runTrackedMove(entry.path, entry.destinationPath!)
+              : _runTrackedFile(entry.path),
+        );
+        _pendingFiles[entry.path] = operation;
+        _enqueue(operation);
+        unawaited(operation.future.then<void>((_) {}, onError: (_, _) {}));
+      }
+    }
+  }
+
+  Future<void> retry(String path) async {
+    if (_closed) throw _closedError();
+    await _loadOutbox();
+    final current = _outbox[path];
+    if (current == null || _pendingFiles.containsKey(path)) return;
+    _outbox[path] = current.copyWith(
+      state: SyncQueueState.waiting,
+      clearError: true,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await _saveOutbox();
+    final operation = _FileQueueEntry(
+      path,
+      () =>
+          current.kind == SyncOperationKind.move &&
+              current.destinationPath != null
+          ? _runTrackedMove(path, current.destinationPath!)
+          : _runTrackedFile(path),
+    );
+    _pendingFiles[path] = operation;
+    _enqueue(operation);
+    unawaited(operation.future.then<void>((_) {}, onError: (_, _) {}));
+  }
+
+  Future<void> retryPending({bool automatic = false}) async {
+    await _loadOutbox();
+    for (final entry in [..._outbox.values]) {
+      if (entry.state != SyncQueueState.error ||
+          automatic && !entry.retryable) {
+        continue;
+      }
+      await retry(entry.path);
+    }
   }
 
   Future<void> resolve(
@@ -106,6 +203,149 @@ class SyncEngine {
     }
   }
 
+  Future<SyncResult> _runTrackedFile(String path) async {
+    await _loadOutbox();
+    final current =
+        _outbox[path] ??
+        SyncQueueEntry(
+          path: path,
+          state: SyncQueueState.waiting,
+          updatedAt: DateTime.now().toUtc(),
+        );
+    _outbox[path] = current.copyWith(
+      state: SyncQueueState.sending,
+      attempts: current.attempts + 1,
+      clearError: true,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await _saveOutbox();
+    try {
+      final result = await _synchronizeFile(path);
+      if (result.conflicts.isEmpty) _outbox.remove(path);
+      if (result.conflicts.isNotEmpty) {
+        _outbox[path] = _outbox[path]!.copyWith(
+          state: SyncQueueState.error,
+          error: 'Обнаружен конфликт',
+          retryable: false,
+          updatedAt: DateTime.now().toUtc(),
+        );
+      }
+      await _saveOutbox();
+      return result;
+    } catch (error) {
+      _outbox[path] = _outbox[path]!.copyWith(
+        state: SyncQueueState.error,
+        error: error.toString(),
+        retryable: _isRetryable(error),
+        updatedAt: DateTime.now().toUtc(),
+      );
+      await _saveOutbox();
+      rethrow;
+    }
+  }
+
+  Future<SyncResult> _runTrackedMove(String from, String to) async {
+    await _loadOutbox();
+    final current = _outbox[from]!;
+    _outbox[from] = current.copyWith(
+      state: SyncQueueState.sending,
+      attempts: current.attempts + 1,
+      clearError: true,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await _saveOutbox();
+    try {
+      final document = await _local.read(to);
+      if (document == null) {
+        throw StateError('Перемещённый файл не найден: $to');
+      }
+      final state = await _loadState();
+      final old = state[from];
+      final remoteEntry = await _remote.entry(from);
+      String? etag;
+      if (remoteEntry == null) {
+        etag = await _ensureRemotePathAndUpload(document);
+      } else {
+        final parts = to.split('/');
+        for (var index = 1; index < parts.length; index++) {
+          await _remote.createDirectory(parts.take(index).join('/'));
+        }
+        await _remote.move(
+          from,
+          to,
+          expectedEtag: old?.etag ?? remoteEntry.etag,
+        );
+        etag = (await _remote.entry(to))?.etag;
+      }
+      state.remove(from);
+      await _store.remove(_baseKey(from));
+      await _record(to, document.bytes, etag, state);
+      await _saveState(state);
+      _outbox.remove(from);
+      await _saveOutbox();
+      return const SyncResult(downloaded: 0, uploaded: 1, conflicts: []);
+    } catch (error) {
+      _outbox[from] = _outbox[from]!.copyWith(
+        state: SyncQueueState.error,
+        error: error.toString(),
+        retryable: _isRetryable(error),
+        updatedAt: DateTime.now().toUtc(),
+      );
+      await _saveOutbox();
+      rethrow;
+    }
+  }
+
+  bool _isRetryable(Object error) {
+    if (error is! DioException) return false;
+    final status = error.response?.statusCode;
+    return status == null || status == 408 || status == 429 || status >= 500;
+  }
+
+  Future<void> _loadOutbox() async {
+    if (_outboxLoaded) return;
+    _outboxLoaded = true;
+    final bytes = await _store.read(_outboxKey);
+    if (bytes == null) {
+      _emitQueue();
+      return;
+    }
+    try {
+      final values = jsonDecode(utf8.decode(bytes)) as List<Object?>;
+      for (final value in values) {
+        final item = SyncQueueEntry.fromJson(
+          Map<String, Object?>.from(value! as Map),
+        );
+        if (_outbox.containsKey(item.path)) continue;
+        _outbox[item.path] = item.state == SyncQueueState.sending
+            ? item.copyWith(state: SyncQueueState.waiting)
+            : item;
+      }
+    } catch (error) {
+      AppLog.warning('Sync', 'Повреждён outbox, он будет пересоздан: $error');
+      _outbox.clear();
+    }
+    _emitQueue();
+  }
+
+  Future<void> _saveOutbox() async {
+    final payload = Uint8List.fromList(
+      utf8.encode(jsonEncode(_orderedOutbox().map((e) => e.toJson()).toList())),
+    );
+    final write = _outboxWrite.then((_) => _store.write(_outboxKey, payload));
+    _outboxWrite = write.then<void>((_) {}, onError: (_, _) {});
+    await write;
+    _emitQueue();
+  }
+
+  List<SyncQueueEntry> _orderedOutbox() {
+    final values = [..._outbox.values]
+      ..sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
+    return List.unmodifiable(values);
+  }
+
+  void _emitQueue() => onQueueChanged?.call(_orderedOutbox());
+
   Future<SyncResult> _synchronize() async {
     final batch = _local is BatchableVaultRepository
         ? _local as BatchableVaultRepository
@@ -125,6 +365,7 @@ class SyncEngine {
         for (final file in await _remote.listTree())
           if (!file.isDirectory && !_ignored(file.path)) file.path: file,
       };
+      await _preflight(local, remote, state);
       final paths = {...state.keys, ...local.keys, ...remote.keys}.toList()
         ..sort();
       AppLog.info(
@@ -286,6 +527,59 @@ class SyncEngine {
       rethrow;
     } finally {
       await batch?.endBatch();
+    }
+  }
+
+  Future<void> _preflight(
+    Map<String, VaultDocument> local,
+    Map<String, WebDavEntry> remote,
+    Map<String, _SyncRecord> state,
+  ) async {
+    var downloadBytes = 0;
+    for (final entry in remote.entries) {
+      final known = state[entry.key];
+      if (local[entry.key] == null || known?.etag != entry.value.etag) {
+        downloadBytes += entry.value.size;
+      }
+    }
+    final reserve = downloadBytes ~/ 10 > 64 * 1024 * 1024
+        ? downloadBytes ~/ 10
+        : 64 * 1024 * 1024;
+    final requiredLocal = downloadBytes + reserve;
+    final availableLocal = await _capacity.availableBytes(_store.rootPath);
+    if (availableLocal != null && availableLocal < requiredLocal) {
+      throw InsufficientSpaceException(
+        requiredBytes: requiredLocal,
+        availableBytes: availableLocal,
+        location: 'устройство',
+      );
+    }
+
+    var uploadBytes = 0;
+    for (final entry in local.entries) {
+      final known = state[entry.key];
+      if (known == null || known.hash != entry.value.contentHash) {
+        uploadBytes += entry.value.bytes.length;
+      }
+    }
+    if (uploadBytes == 0 || availableLocal == null) return;
+    try {
+      final quota = await _remote.quota();
+      if (quota.availableBytes case final available?
+          when available < uploadBytes) {
+        throw InsufficientSpaceException(
+          requiredBytes: uploadBytes,
+          availableBytes: available,
+          location: 'WebDAV',
+        );
+      }
+      if (quota.availableBytes == null) {
+        AppLog.warning('Sync', 'WebDAV не сообщает доступную квоту');
+      }
+    } on InsufficientSpaceException {
+      rethrow;
+    } catch (error) {
+      AppLog.warning('Sync', 'Не удалось получить квоту WebDAV: $error');
     }
   }
 

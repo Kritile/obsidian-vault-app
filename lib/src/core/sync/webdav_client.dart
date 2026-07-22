@@ -103,6 +103,12 @@ class WebDavEntry {
   final String? etag;
 }
 
+class WebDavQuota {
+  const WebDavQuota({this.availableBytes, this.usedBytes});
+  final int? availableBytes;
+  final int? usedBytes;
+}
+
 class WebDavClient {
   WebDavClient(WebDavCredentials credentials)
     : _base = credentials.baseUrl.path.endsWith('/')
@@ -159,6 +165,27 @@ class WebDavClient {
 
   final Uri _base;
   final Dio _dio;
+
+  Future<WebDavQuota> quota() async {
+    final response = await _dio.request<String>(
+      _base.toString(),
+      options: Options(
+        method: 'PROPFIND',
+        headers: {'Depth': '0', 'Content-Type': 'application/xml'},
+        responseType: ResponseType.plain,
+        validateStatus: (status) => status == 207,
+      ),
+      data:
+          '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:quota-available-bytes/><d:quota-used-bytes/></d:prop></d:propfind>',
+    );
+    final xml = XmlDocument.parse(response.data ?? '');
+    String? value(String name) =>
+        xml.findAllElements(name, namespace: 'DAV:').firstOrNull?.innerText;
+    return WebDavQuota(
+      availableBytes: int.tryParse(value('quota-available-bytes') ?? ''),
+      usedBytes: int.tryParse(value('quota-used-bytes') ?? ''),
+    );
+  }
 
   Future<List<WebDavEntry>> listTree() async {
     AppLog.info(

@@ -3,8 +3,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dio/dio.dart';
 import 'package:pavel_vault/src/core/crypto/encrypted_object_store.dart';
 import 'package:pavel_vault/src/core/sync/sync_engine.dart';
+import 'package:pavel_vault/src/core/sync/sync_models.dart';
+import 'package:pavel_vault/src/core/sync/storage_capacity_service.dart';
 import 'package:pavel_vault/src/core/sync/webdav_client.dart';
 import 'package:pavel_vault/src/core/vault/vault_models.dart';
 import 'package:pavel_vault/src/core/vault/vault_repository.dart';
@@ -89,6 +92,82 @@ void main() {
     await closing;
     expect(closed, isTrue);
   });
+
+  test('failed upload remains in encrypted outbox and is restored', () async {
+    final local = _MemoryVault()..put('note.md', 'offline change');
+    final store = _MemoryStore();
+    final failing = _FailingWebDav();
+    final snapshots = <List<SyncQueueEntry>>[];
+    final first = SyncEngine(
+      local: local,
+      store: store,
+      remote: failing,
+      onQueueChanged: (entries) => snapshots.add(entries),
+    );
+
+    await expectLater(
+      first.synchronizeFile('note.md'),
+      throwsA(isA<DioException>()),
+    );
+    expect(snapshots.last.single.state, SyncQueueState.error);
+    expect(store._values['__sync_outbox_v1__'], isNotNull);
+    await first.close();
+
+    final recovered = _FakeWebDav();
+    final second = SyncEngine(local: local, store: store, remote: recovered);
+    await second.restorePending();
+    await recovered.uploadStarted.future;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(second.queue, isEmpty);
+    await second.close();
+  });
+
+  test(
+    'full sync stops before writes when local space is insufficient',
+    () async {
+      final remote = _FakeWebDav()
+        ..entries = [
+          WebDavEntry(
+            path: 'large.bin',
+            isDirectory: false,
+            modifiedAt: DateTime(2026),
+            size: 1024,
+          ),
+        ];
+      final engine = SyncEngine(
+        local: _MemoryVault(),
+        store: _MemoryStore(),
+        remote: remote,
+        capacity: _NoSpace(),
+      );
+
+      await expectLater(
+        engine.synchronize(),
+        throwsA(isA<InsufficientSpaceException>()),
+      );
+      expect(remote.downloads, isEmpty);
+    },
+  );
+}
+
+class _NoSpace extends StorageCapacityService {
+  @override
+  Future<int?> availableBytes(String? path) async => 0;
+}
+
+class _FailingWebDav extends _FakeWebDav {
+  @override
+  Future<String?> upload(
+    String path,
+    Uint8List bytes, {
+    String? expectedEtag,
+  }) async {
+    throw DioException(
+      requestOptions: RequestOptions(path: path),
+      type: DioExceptionType.connectionError,
+      error: 'offline',
+    );
+  }
 }
 
 class _MemoryVault implements VaultRepository {
@@ -162,12 +241,20 @@ class _FakeWebDav extends WebDavClient {
   final listStarted = Completer<void>();
   final uploadStarted = Completer<void>();
   final List<Uint8List> uploads = [];
+  final List<String> downloads = [];
+  List<WebDavEntry> entries = const [];
 
   @override
   Future<List<WebDavEntry>> listTree() async {
     if (!listStarted.isCompleted) listStarted.complete();
     await listGate?.future;
-    return const [];
+    return entries;
+  }
+
+  @override
+  Future<Uint8List> download(String path) async {
+    downloads.add(path);
+    return Uint8List(1024);
   }
 
   @override

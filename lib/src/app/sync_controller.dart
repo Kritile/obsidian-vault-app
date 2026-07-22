@@ -33,12 +33,14 @@ class SyncController extends ChangeNotifier {
   final SyncEngineFactory _engineFactory;
   SyncEngine? _engine;
   Timer? _noticeTimer;
+  Timer? _retryTimer;
 
   int _pendingOperations = 0;
   bool get busy => _pendingOperations > 0;
   String? error;
   String? syncMessage;
   List<SyncConflict> conflicts = const [];
+  List<SyncQueueEntry> queue = const [];
   SyncProgress? progress;
   String? operationNotice;
   bool operationNoticeIsError = false;
@@ -55,9 +57,19 @@ class SyncController extends ChangeNotifier {
     if (profile == null || !_vault.ready) {
       _engine = null;
     } else {
-      _engine = _engineFactory(profile, (value) {
+      final engine = _engineFactory(profile, (value) {
         progress = value;
         notifyListeners();
+      });
+      engine.onQueueChanged = (entries) {
+        queue = entries;
+        notifyListeners();
+      };
+      _engine = engine;
+      unawaited(engine.restorePending());
+      _retryTimer?.cancel();
+      _retryTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+        unawaited(engine.retryPending(automatic: true));
       });
     }
     notifyListeners();
@@ -182,11 +194,87 @@ class SyncController extends ChangeNotifier {
     }
   }
 
+  Future<void> saveAttachment(String path, Uint8List bytes) async {
+    _beginOperation();
+    try {
+      await _vault.saveBytes(path, bytes);
+      await onVaultChanged?.call();
+      final engine = _engine;
+      if (engine == null) return;
+      try {
+        await engine.synchronizeFile(path);
+      } catch (exception, stackTrace) {
+        error = exception.toString();
+        AppLog.error(
+          'Attachment',
+          'Вложение осталось в outbox: $path',
+          exception,
+          stackTrace,
+        );
+      }
+    } finally {
+      _endOperation();
+    }
+  }
+
+  Future<void> moveNote(String from, String to) async {
+    _beginOperation();
+    try {
+      final changed = await _vault.moveNote(from, to);
+      await onVaultChanged?.call();
+      final engine = _engine;
+      if (engine == null) return;
+      await engine.synchronizeMove(
+        from,
+        to.toLowerCase().endsWith('.md') ? to : '$to.md',
+      );
+      for (final path in changed.where(
+        (path) => path != to && path != '$to.md',
+      )) {
+        await engine.synchronizeFile(path);
+      }
+    } finally {
+      _endOperation();
+    }
+  }
+
   Future<void> close() async {
+    _retryTimer?.cancel();
+    _retryTimer = null;
     final engine = _engine;
     _engine = null;
     notifyListeners();
     await engine?.close();
+  }
+
+  Future<void> retry(String path) => _engine?.retry(path) ?? Future.value();
+
+  Future<void> retryPending() =>
+      _engine?.retryPending(automatic: true) ?? Future.value();
+
+  Future<void> recoverCacheFromWebDav() async {
+    final profile = activeProfile;
+    if (profile == null) throw StateError('WebDAV не настроен');
+    _beginOperation();
+    error = null;
+    try {
+      await close();
+      await _vault.recoverFromWebDav(profile);
+      configure(profile);
+      syncMessage = 'Кеш безопасно восстановлен с WebDAV';
+    } catch (exception, stackTrace) {
+      error = exception.toString();
+      AppLog.error(
+        'Recovery',
+        'Не удалось восстановить кеш',
+        exception,
+        stackTrace,
+      );
+      if (_engine == null) configure(profile);
+      rethrow;
+    } finally {
+      _endOperation();
+    }
   }
 
   void resetForProfile(String message) {
@@ -239,6 +327,7 @@ class SyncController extends ChangeNotifier {
   @override
   void dispose() {
     _noticeTimer?.cancel();
+    _retryTimer?.cancel();
     unawaited(_engine?.close());
     super.dispose();
   }

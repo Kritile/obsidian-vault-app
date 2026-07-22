@@ -344,7 +344,9 @@ class EncryptedCachedRepository
       key != _manifestBackupKey &&
       key != _batchJournalKey &&
       key != '__sync_state__' &&
+      key != '__sync_outbox_v1__' &&
       key != '__image_cache_manifest_v1__' &&
+      !key.startsWith('__draft_v1__:') &&
       !key.startsWith('__base__:') &&
       !key.startsWith('__image__:');
 }

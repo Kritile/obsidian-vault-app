@@ -275,6 +275,7 @@ class SessionController extends ChangeNotifier {
     _lockTimer?.cancel();
     _lockTimer = null;
     _backgroundedAt = null;
+    unawaited(_sync.retryPending());
     if (backgroundedAt != null &&
         DateTime.now().difference(backgroundedAt) >= autoLockDelay) {
       lock();

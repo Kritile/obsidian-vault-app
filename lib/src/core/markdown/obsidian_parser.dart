@@ -8,7 +8,9 @@ import '../vault/vault_models.dart';
 
 class ObsidianParser {
   static final _frontmatter = RegExp(r'^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)');
-  static final _wikiLink = RegExp(r'(!)?\[\[([^\]|#]+(?:#[^\]|]+)?)(?:\|([^\]]+))?\]\]');
+  static final _wikiLink = RegExp(
+    r'(!)?\[\[([^\]|#]+(?:#[^\]|]+)?)(?:\|([^\]]+))?\]\]',
+  );
   static final _task = RegExp(r'^\s*-\s+\[([ xX-])\]\s+(.+)$');
 
   ParsedNote parse(VaultDocument document) {
@@ -17,25 +19,35 @@ class ObsidianParser {
     final yamlText = match?.group(1) ?? '';
     final body = match == null ? text : text.substring(match.end);
     final frontmatter = _yamlMap(yamlText);
-    final tags = _tags(frontmatter['tags']);
+    final tags = {
+      ..._tags(frontmatter['tags']),
+      ...RegExp(
+        r'(?:^|\s)#([\p{L}\p{N}_/-]+)',
+        unicode: true,
+      ).allMatches(body).map((match) => match.group(1)!),
+    }.toList(growable: false);
     final links = _wikiLink
         .allMatches(body)
-        .map((match) => WikiLink(
-              target: match.group(2)!.trim(),
-              alias: match.group(3)?.trim(),
-              embedded: match.group(1) != null,
-            ))
+        .map(
+          (match) => WikiLink(
+            target: match.group(2)!.trim(),
+            alias: match.group(3)?.trim(),
+            embedded: match.group(1) != null,
+          ),
+        )
         .toList(growable: false);
     final tasks = <MarkdownTask>[];
     final lines = const LineSplitter().convert(body);
     for (var index = 0; index < lines.length; index++) {
       final taskMatch = _task.firstMatch(lines[index]);
       if (taskMatch != null) {
-        tasks.add(MarkdownTask(
-          line: index,
-          text: taskMatch.group(2)!.trim(),
-          completed: taskMatch.group(1)!.toLowerCase() == 'x',
-        ));
+        tasks.add(
+          MarkdownTask(
+            line: index,
+            text: taskMatch.group(2)!.trim(),
+            completed: taskMatch.group(1)!.toLowerCase() == 'x',
+          ),
+        );
       }
     }
     return ParsedNote(
@@ -91,14 +103,19 @@ class ObsidianParser {
 
   Object? _plain(Object? value) {
     if (value is YamlMap) {
-      return {for (final entry in value.entries) entry.key.toString(): _plain(entry.value)};
+      return {
+        for (final entry in value.entries)
+          entry.key.toString(): _plain(entry.value),
+      };
     }
     if (value is YamlList) return value.map(_plain).toList(growable: false);
     return value;
   }
 
   List<String> _tags(Object? value) {
-    if (value is List) return value.map((tag) => tag.toString()).toList(growable: false);
+    if (value is List) {
+      return value.map((tag) => tag.toString()).toList(growable: false);
+    }
     if (value is String) {
       return value
           .replaceAll(RegExp(r'^\[|\]$'), '')
@@ -119,7 +136,8 @@ class ObsidianParser {
       'training-log' => VaultEntityType.training,
       'health-log' => VaultEntityType.health,
       'period-report' => VaultEntityType.periodReport,
-      _ when path.startsWith('Daily/') || path.contains('/Daily/') => VaultEntityType.daily,
+      _ when path.startsWith('Daily/') || path.contains('/Daily/') =>
+        VaultEntityType.daily,
       _ when path.endsWith('.base') => VaultEntityType.base,
       _ => VaultEntityType.note,
     };

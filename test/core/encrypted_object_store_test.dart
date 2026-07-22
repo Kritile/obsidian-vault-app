@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -55,4 +56,35 @@ void main() {
 
     expect(await stale.exists(), isFalse);
   });
+
+  test(
+    'verified staging store replaces current root and keeps backup',
+    () async {
+      final root = await Directory.systemTemp.createTemp('vellum-store-stage-');
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+        final parent = root.parent;
+        await for (final entity in parent.list()) {
+          if (entity.path.startsWith('${root.path}.backup-') ||
+              entity.path.startsWith('${root.path}.restore-')) {
+            await entity.delete(recursive: true);
+          }
+        }
+      });
+      final store = EncryptedObjectStore(rootDirectory: root);
+      await store.initialize();
+      await store.write('note.md', Uint8List.fromList(utf8.encode('old')));
+      final staging = await store.createStaging();
+      await staging.write('note.md', Uint8List.fromList(utf8.encode('new')));
+
+      final backup = await store.replaceWith(staging);
+
+      expect(utf8.decode((await store.read('note.md'))!), 'new');
+      expect(await Directory(backup).exists(), isTrue);
+
+      final failed = await store.rollbackFrom(backup);
+      expect(utf8.decode((await store.read('note.md'))!), 'old');
+      expect(await Directory(failed).exists(), isTrue);
+    },
+  );
 }

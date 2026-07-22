@@ -70,6 +70,13 @@ class ParsedNote {
   final List<WikiLink> links;
   final List<MarkdownTask> tasks;
 
+  List<String> get aliases {
+    final value = frontmatter['aliases'];
+    if (value is List) return value.map((item) => item.toString()).toList();
+    if (value is String && value.trim().isNotEmpty) return [value.trim()];
+    return const [];
+  }
+
   String get title {
     final heading = RegExp(r'^#\s+(.+)$', multiLine: true).firstMatch(body);
     return heading?.group(1)?.trim() ??

@@ -37,6 +37,8 @@ class EncryptedObjectStore {
   SecretKey? _key;
   Directory? _root;
 
+  String? get rootPath => _root?.path;
+
   Future<void> initialize() async {
     if (_rootOverride != null) {
       _root = _rootOverride;
@@ -188,6 +190,63 @@ class EncryptedObjectStore {
     _ensureReady();
     final file = _file(key);
     return await file.exists() ? file.lastModified() : null;
+  }
+
+  Future<EncryptedObjectStore> createStaging() async {
+    _ensureReady();
+    final directory = Directory(
+      '${_root!.path}.restore-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    final staging = EncryptedObjectStore(
+      rootDirectory: directory,
+      secretKey: _key,
+      cipher: _cipher,
+    );
+    await staging.initialize();
+    return staging;
+  }
+
+  Future<String> replaceWith(EncryptedObjectStore staging) async {
+    _ensureReady();
+    staging._ensureReady();
+    final current = _root!;
+    final incoming = staging._root!;
+    final backup = Directory(
+      '${current.path}.backup-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await current.rename(backup.path);
+    try {
+      await incoming.rename(current.path);
+    } catch (_) {
+      await backup.rename(current.path);
+      rethrow;
+    }
+    return backup.path;
+  }
+
+  Future<void> destroy() async {
+    _ensureReady();
+    if (await _root!.exists()) await _root!.delete(recursive: true);
+  }
+
+  Future<String> rollbackFrom(String backupPath) async {
+    _ensureReady();
+    final backup = Directory(backupPath);
+    if (!await backup.exists()) {
+      throw StateError('Recovery backup does not exist: $backupPath');
+    }
+    final failed =
+        '${_root!.path}.failed-${DateTime.now().microsecondsSinceEpoch}';
+    if (await _root!.exists()) await _root!.rename(failed);
+    try {
+      await backup.rename(_root!.path);
+    } catch (_) {
+      if (await Directory(failed).exists()) {
+        await Directory(failed).rename(_root!.path);
+      }
+      rethrow;
+    }
+    return failed;
   }
 
   File _file(String key) {

@@ -127,6 +127,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onTap: _verifyCache,
             ),
           ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: TextFormField(
+                initialValue: settings.attachmentFolder,
+                decoration: const InputDecoration(
+                  labelText: 'Папка вложений',
+                  prefixIcon: Icon(Icons.attach_file),
+                  helperText: 'По умолчанию: Attachments',
+                ),
+                onFieldSubmitted: settings.setAttachmentFolder,
+              ),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.cloud_download_outlined),
+              title: const Text('Восстановить кеш с WebDAV'),
+              subtitle: const Text(
+                'Сначала создаётся и проверяется отдельная копия; текущий кеш сохраняется для отката',
+              ),
+              onTap: _recoverCache,
+            ),
+          ),
           const SizedBox(height: 10),
           Card(
             child: Padding(
@@ -362,6 +386,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Проверка кеша завершена')));
+  }
+
+  Future<void> _recoverCache() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Восстановить кеш с WebDAV?'),
+        content: const Text(
+          'Несинхронизированные читаемые изменения будут перенесены в новую копию. Текущий кеш не удаляется.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Восстановить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(syncControllerProvider).recoverCacheFromWebDav();
+      _refreshUsage();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Кеш восстановлен и проверен')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Восстановление отменено: $error')),
+      );
+    }
   }
 
   void _refreshUsage() {
