@@ -19,6 +19,7 @@ jobs:
       - run: flutter test
 
   release-android:
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +37,7 @@ jobs:
           if-no-files-found: error
 
   release-linux:
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +57,7 @@ jobs:
           if-no-files-found: error
 
   release-windows:
+    needs: quality
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
