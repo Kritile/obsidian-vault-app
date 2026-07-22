@@ -37,77 +37,209 @@ class NativeEntityDefinition {
 }
 
 const nativeEntityDefinitions = <NativeEntityDefinition>[
-  NativeEntityDefinition(kind: NativeEntityKind.book, label: 'Книга', folder: 'Areas/Книги', fields: [
-    EntityFieldDefinition(key: 'title', label: 'Название', required: true),
-    EntityFieldDefinition(key: 'author', label: 'Автор', required: true),
-    EntityFieldDefinition(key: 'year', label: 'Год', type: EntityFieldType.number),
-    EntityFieldDefinition(key: 'genres', label: 'Жанры', type: EntityFieldType.tags, hint: 'Через запятую'),
-    EntityFieldDefinition(key: 'status', label: 'Статус', type: EntityFieldType.choice, options: ['unread', 'reading', 'finished', 'abandoned']),
-    EntityFieldDefinition(key: 'rating', label: 'Оценка 1–10', type: EntityFieldType.number),
-    EntityFieldDefinition(key: 'isbn', label: 'ISBN'),
-    EntityFieldDefinition(key: 'cover', label: 'Ссылка на обложку'),
-    EntityFieldDefinition(key: 'description', label: 'Описание', type: EntityFieldType.multiline),
-    EntityFieldDefinition(key: 'notes', label: 'Мои заметки', type: EntityFieldType.multiline),
-  ]),
-  NativeEntityDefinition(kind: NativeEntityKind.recipe, label: 'Рецепт', folder: 'Areas/Recipes', fields: [
-    EntityFieldDefinition(key: 'title', label: 'Название', required: true),
-    EntityFieldDefinition(key: 'category', label: 'Категория'),
-    EntityFieldDefinition(key: 'cuisine', label: 'Кухня'),
-    EntityFieldDefinition(key: 'difficulty', label: 'Сложность', type: EntityFieldType.choice, options: ['easy', 'medium', 'hard']),
-    EntityFieldDefinition(key: 'servings', label: 'Порций', type: EntityFieldType.number),
-    EntityFieldDefinition(key: 'prep_time', label: 'Подготовка, мин', type: EntityFieldType.number),
-    EntityFieldDefinition(key: 'cook_time', label: 'Приготовление, мин', type: EntityFieldType.number),
-    EntityFieldDefinition(key: 'favorite', label: 'Любимый рецепт', type: EntityFieldType.boolean),
-    EntityFieldDefinition(key: 'ingredients', label: 'Ингредиенты', type: EntityFieldType.multiline, hint: 'Каждый ингредиент с новой строки'),
-    EntityFieldDefinition(key: 'instructions', label: 'Приготовление', type: EntityFieldType.multiline),
-  ]),
-  NativeEntityDefinition(kind: NativeEntityKind.plant, label: 'Растение', folder: 'Areas/Растения', fields: [
-    EntityFieldDefinition(key: 'title', label: 'Название', required: true),
-    EntityFieldDefinition(key: 'latin', label: 'Латинское название'),
-    EntityFieldDefinition(key: 'photo', label: 'Фото или ссылка'),
-    EntityFieldDefinition(key: 'light', label: 'Освещение'),
-    EntityFieldDefinition(key: 'watering', label: 'Полив'),
-    EntityFieldDefinition(key: 'temperature', label: 'Температура'),
-    EntityFieldDefinition(key: 'notes', label: 'Особенности ухода', type: EntityFieldType.multiline),
-  ]),
-  NativeEntityDefinition(kind: NativeEntityKind.tea, label: 'Чай', folder: 'Areas/Чай', fields: [
-    EntityFieldDefinition(key: 'title', label: 'Название', required: true),
-    EntityFieldDefinition(key: 'category', label: 'Категория'),
-    EntityFieldDefinition(key: 'year', label: 'Год', type: EntityFieldType.number),
-    EntityFieldDefinition(key: 'origin', label: 'Происхождение'),
-    EntityFieldDefinition(key: 'effect', label: 'Эффект', type: EntityFieldType.multiline),
-    EntityFieldDefinition(key: 'taste', label: 'Вкус', type: EntityFieldType.multiline),
-    EntityFieldDefinition(key: 'image', label: 'Изображение'),
-    EntityFieldDefinition(key: 'brewing', label: 'Рекомендации по завариванию', type: EntityFieldType.multiline),
-  ]),
-  NativeEntityDefinition(kind: NativeEntityKind.medicine, label: 'Лекарство', folder: 'Areas/Аптечка', fields: [
-    EntityFieldDefinition(key: 'title', label: 'Название', required: true),
-    EntityFieldDefinition(key: 'inn', label: 'МНН'),
-    EntityFieldDefinition(key: 'format', label: 'Форма выпуска'),
-    EntityFieldDefinition(key: 'dosage', label: 'Дозировка'),
-    EntityFieldDefinition(key: 'package', label: 'Количество в упаковке'),
-    EntityFieldDefinition(key: 'appointment', label: 'Назначение'),
-    EntityFieldDefinition(key: 'remainder', label: 'Осталось', type: EntityFieldType.number),
-    EntityFieldDefinition(key: 'manufacturer', label: 'Производитель'),
-    EntityFieldDefinition(key: 'active', label: 'Сейчас принимаю', type: EntityFieldType.boolean),
-    EntityFieldDefinition(key: 'dosagePerDay', label: 'В день', type: EntityFieldType.number),
-    EntityFieldDefinition(key: 'notes', label: 'Примечания', type: EntityFieldType.multiline),
-  ]),
-  NativeEntityDefinition(kind: NativeEntityKind.note, label: 'Заметка', folder: 'Входящие', fields: [
-    EntityFieldDefinition(key: 'title', label: 'Название', required: true),
-    EntityFieldDefinition(key: 'tags', label: 'Теги', type: EntityFieldType.tags),
-    EntityFieldDefinition(key: 'body', label: 'Текст', type: EntityFieldType.multiline),
-  ]),
+  NativeEntityDefinition(
+    kind: NativeEntityKind.book,
+    label: 'Книга',
+    folder: 'Areas/Книги',
+    fields: [
+      EntityFieldDefinition(key: 'title', label: 'Название', required: true),
+      EntityFieldDefinition(key: 'author', label: 'Автор', required: true),
+      EntityFieldDefinition(
+        key: 'year',
+        label: 'Год',
+        type: EntityFieldType.number,
+      ),
+      EntityFieldDefinition(
+        key: 'genres',
+        label: 'Жанры',
+        type: EntityFieldType.tags,
+        hint: 'Через запятую',
+      ),
+      EntityFieldDefinition(
+        key: 'status',
+        label: 'Статус',
+        type: EntityFieldType.choice,
+        options: ['unread', 'reading', 'finished', 'abandoned'],
+      ),
+      EntityFieldDefinition(
+        key: 'rating',
+        label: 'Оценка 1–10',
+        type: EntityFieldType.number,
+      ),
+      EntityFieldDefinition(key: 'isbn', label: 'ISBN'),
+      EntityFieldDefinition(key: 'cover', label: 'Ссылка на обложку'),
+      EntityFieldDefinition(
+        key: 'description',
+        label: 'Описание',
+        type: EntityFieldType.multiline,
+      ),
+      EntityFieldDefinition(
+        key: 'notes',
+        label: 'Мои заметки',
+        type: EntityFieldType.multiline,
+      ),
+    ],
+  ),
+  NativeEntityDefinition(
+    kind: NativeEntityKind.recipe,
+    label: 'Рецепт',
+    folder: 'Areas/Recipes',
+    fields: [
+      EntityFieldDefinition(key: 'title', label: 'Название', required: true),
+      EntityFieldDefinition(key: 'category', label: 'Категория'),
+      EntityFieldDefinition(key: 'cuisine', label: 'Кухня'),
+      EntityFieldDefinition(
+        key: 'difficulty',
+        label: 'Сложность',
+        type: EntityFieldType.choice,
+        options: ['easy', 'medium', 'hard'],
+      ),
+      EntityFieldDefinition(
+        key: 'servings',
+        label: 'Порций',
+        type: EntityFieldType.number,
+      ),
+      EntityFieldDefinition(
+        key: 'prep_time',
+        label: 'Подготовка, мин',
+        type: EntityFieldType.number,
+      ),
+      EntityFieldDefinition(
+        key: 'cook_time',
+        label: 'Приготовление, мин',
+        type: EntityFieldType.number,
+      ),
+      EntityFieldDefinition(
+        key: 'favorite',
+        label: 'Любимый рецепт',
+        type: EntityFieldType.boolean,
+      ),
+      EntityFieldDefinition(
+        key: 'ingredients',
+        label: 'Ингредиенты',
+        type: EntityFieldType.multiline,
+        hint: 'Каждый ингредиент с новой строки',
+      ),
+      EntityFieldDefinition(
+        key: 'instructions',
+        label: 'Приготовление',
+        type: EntityFieldType.multiline,
+      ),
+    ],
+  ),
+  NativeEntityDefinition(
+    kind: NativeEntityKind.plant,
+    label: 'Растение',
+    folder: 'Areas/Растения',
+    fields: [
+      EntityFieldDefinition(key: 'title', label: 'Название', required: true),
+      EntityFieldDefinition(key: 'latin', label: 'Латинское название'),
+      EntityFieldDefinition(key: 'photo', label: 'Фото или ссылка'),
+      EntityFieldDefinition(key: 'light', label: 'Освещение'),
+      EntityFieldDefinition(key: 'watering', label: 'Полив'),
+      EntityFieldDefinition(key: 'temperature', label: 'Температура'),
+      EntityFieldDefinition(
+        key: 'notes',
+        label: 'Особенности ухода',
+        type: EntityFieldType.multiline,
+      ),
+    ],
+  ),
+  NativeEntityDefinition(
+    kind: NativeEntityKind.tea,
+    label: 'Чай',
+    folder: 'Areas/Чай',
+    fields: [
+      EntityFieldDefinition(key: 'title', label: 'Название', required: true),
+      EntityFieldDefinition(key: 'category', label: 'Категория'),
+      EntityFieldDefinition(
+        key: 'year',
+        label: 'Год',
+        type: EntityFieldType.number,
+      ),
+      EntityFieldDefinition(key: 'origin', label: 'Происхождение'),
+      EntityFieldDefinition(
+        key: 'effect',
+        label: 'Эффект',
+        type: EntityFieldType.multiline,
+      ),
+      EntityFieldDefinition(
+        key: 'taste',
+        label: 'Вкус',
+        type: EntityFieldType.multiline,
+      ),
+      EntityFieldDefinition(key: 'image', label: 'Изображение'),
+      EntityFieldDefinition(
+        key: 'brewing',
+        label: 'Рекомендации по завариванию',
+        type: EntityFieldType.multiline,
+      ),
+    ],
+  ),
+  NativeEntityDefinition(
+    kind: NativeEntityKind.medicine,
+    label: 'Лекарство',
+    folder: 'Areas/Аптечка',
+    fields: [
+      EntityFieldDefinition(key: 'title', label: 'Название', required: true),
+      EntityFieldDefinition(key: 'inn', label: 'МНН'),
+      EntityFieldDefinition(key: 'format', label: 'Форма выпуска'),
+      EntityFieldDefinition(key: 'dosage', label: 'Дозировка'),
+      EntityFieldDefinition(key: 'package', label: 'Количество в упаковке'),
+      EntityFieldDefinition(key: 'appointment', label: 'Назначение'),
+      EntityFieldDefinition(
+        key: 'remainder',
+        label: 'Осталось',
+        type: EntityFieldType.number,
+      ),
+      EntityFieldDefinition(key: 'manufacturer', label: 'Производитель'),
+      EntityFieldDefinition(
+        key: 'active',
+        label: 'Сейчас принимаю',
+        type: EntityFieldType.boolean,
+      ),
+      EntityFieldDefinition(
+        key: 'dosagePerDay',
+        label: 'В день',
+        type: EntityFieldType.number,
+      ),
+      EntityFieldDefinition(
+        key: 'notes',
+        label: 'Примечания',
+        type: EntityFieldType.multiline,
+      ),
+    ],
+  ),
+  NativeEntityDefinition(
+    kind: NativeEntityKind.note,
+    label: 'Заметка',
+    folder: 'Входящие',
+    fields: [
+      EntityFieldDefinition(key: 'title', label: 'Название', required: true),
+      EntityFieldDefinition(
+        key: 'tags',
+        label: 'Теги',
+        type: EntityFieldType.tags,
+      ),
+      EntityFieldDefinition(
+        key: 'body',
+        label: 'Текст',
+        type: EntityFieldType.multiline,
+      ),
+    ],
+  ),
 ];
 
 class NativeEntityTemplate {
   String build(NativeEntityKind kind, Map<String, Object?> values) {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final title = values['title']?.toString().trim() ?? 'Без названия';
-    String scalar(String key, [Object? fallback = '']) => _yaml(values[key] ?? fallback);
+    String scalar(String key, [Object? fallback = '']) =>
+        _yaml(values[key] ?? fallback);
     String text(String key) => values[key]?.toString().trim() ?? '';
     return switch (kind) {
-      NativeEntityKind.book => '''---
+      NativeEntityKind.book =>
+        '''---
 title: ${_yaml(title)}
 author: ${scalar('author')}
 year: ${scalar('year')}
@@ -127,7 +259,8 @@ ${text('description')}
 
 ${text('notes')}
 ''',
-      NativeEntityKind.recipe => '''---
+      NativeEntityKind.recipe =>
+        '''---
 created: $today
 updated: $today
 type: recipe
@@ -152,7 +285,8 @@ ${_bulletLines(text('ingredients'))}
 
 ${text('instructions')}
 ''',
-      NativeEntityKind.plant => '''---
+      NativeEntityKind.plant =>
+        '''---
 Название: ${_yaml(title)}
 Латинское название: ${scalar('latin')}
 Фото: ${scalar('photo')}
@@ -170,7 +304,8 @@ ${text('instructions')}
 
 ${text('notes')}
 ''',
-      NativeEntityKind.tea => '''---
+      NativeEntityKind.tea =>
+        '''---
 type: tea
 category: ${scalar('category')}
 year: ${scalar('year')}
@@ -190,7 +325,8 @@ image: ${scalar('image')}
 
 ${text('brewing')}
 ''',
-      NativeEntityKind.medicine => '''---
+      NativeEntityKind.medicine =>
+        '''---
 tags: [аптечка, лекарства]
 МНН: ${scalar('inn')}
 format: ${scalar('format')}
@@ -223,7 +359,8 @@ ${text('appointment')}
 
 ${text('notes')}
 ''',
-      NativeEntityKind.note => '''---
+      NativeEntityKind.note =>
+        '''---
 created: $today
 modified: $today
 tags: ${_list(values['tags'])}
@@ -246,12 +383,19 @@ ${text('body')}
   String _list(Object? value) {
     final items = value is List
         ? value
-        : value?.toString().split(',').map((item) => item.trim()).where((item) => item.isNotEmpty).toList() ?? const [];
+        : value
+                  ?.toString()
+                  .split(',')
+                  .map((item) => item.trim())
+                  .where((item) => item.isNotEmpty)
+                  .toList() ??
+              const [];
     return '[${items.map(_yaml).join(', ')}]';
   }
 
   num _sum(Object? left, Object? right) =>
-      (num.tryParse(left?.toString() ?? '') ?? 0) + (num.tryParse(right?.toString() ?? '') ?? 0);
+      (num.tryParse(left?.toString() ?? '') ?? 0) +
+      (num.tryParse(right?.toString() ?? '') ?? 0);
 
   String _bulletLines(String source) => source
       .split('\n')

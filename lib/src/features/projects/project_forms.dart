@@ -75,7 +75,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
     await ref
-        .read(appControllerProvider)
+        .read(projectServiceProvider)
         .createProject(
           title: _title.text.trim(),
           status: _status,
@@ -200,8 +200,8 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
     await ref
-        .read(appControllerProvider)
-        .createProjectTask(
+        .read(projectServiceProvider)
+        .createTask(
           project: _project!,
           title: _title.text.trim(),
           priority: _priority,
@@ -364,8 +364,8 @@ class _CreateProjectNoteScreenState
     setState(() => _saving = true);
     try {
       await ref
-          .read(appControllerProvider)
-          .createProjectNote(
+          .read(projectServiceProvider)
+          .createNote(
             project: _project!,
             title: _title.text.trim(),
             noteType: _type,

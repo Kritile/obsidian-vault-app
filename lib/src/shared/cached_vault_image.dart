@@ -21,16 +21,16 @@ class CachedVaultImage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => FutureBuilder(
     future: ref
-        .read(appControllerProvider)
+        .read(vaultControllerProvider)
         .imageCache
         .load(source, notePath: notePath),
     builder: (context, snapshot) => AnimatedSwitcher(
       duration: motionDuration(
         context,
-        ref.watch(appControllerProvider).motionPreference,
+        ref.watch(settingsControllerProvider).motionPreference,
       ),
       switchInCurve: motionCurve(
-        ref.read(appControllerProvider).motionPreference,
+        ref.read(settingsControllerProvider).motionPreference,
       ),
       child: snapshot.data == null
           ? Container(

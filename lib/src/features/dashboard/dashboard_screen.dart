@@ -15,8 +15,9 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.watch(appControllerProvider);
-    final index = controller.index;
+    final vault = ref.watch(vaultControllerProvider);
+    final sync = ref.watch(syncControllerProvider);
+    final index = vault.index;
     final now = DateTime.now();
     final start = DateTime(
       now.year,
@@ -349,13 +350,13 @@ class DashboardScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            if (controller.error != null) ...[
+            if (sync.error != null) ...[
               const SizedBox(height: 12),
               Card(
                 color: Theme.of(context).colorScheme.errorContainer,
                 child: ListTile(
                   leading: const Icon(Icons.error_outline),
-                  title: Text(controller.error!),
+                  title: Text(sync.error!),
                 ),
               ),
             ],
@@ -450,7 +451,7 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   static Future<void> _openDaily(BuildContext context, WidgetRef ref) async {
-    final controller = ref.read(appControllerProvider);
+    final controller = ref.read(vaultControllerProvider);
     final selection = await showDailyNoteCalendar(
       context,
       notes: controller.index.dailies,

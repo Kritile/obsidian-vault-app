@@ -13,13 +13,15 @@ class PavelVaultApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.watch(appControllerProvider);
+    final session = ref.watch(sessionControllerProvider);
+    final settings = ref.watch(settingsControllerProvider);
+    final sync = ref.watch(syncControllerProvider);
     return MaterialApp(
       title: 'Pavel Vault',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.system,
-      theme: _theme(Brightness.light, controller.motionPreference),
-      darkTheme: _theme(Brightness.dark, controller.motionPreference),
+      theme: _theme(Brightness.light, settings.motionPreference),
+      darkTheme: _theme(Brightness.dark, settings.motionPreference),
       builder: (context, child) {
         final content = ColoredBox(
           color: Theme.of(context).scaffoldBackgroundColor,
@@ -31,8 +33,8 @@ class PavelVaultApp extends ConsumerWidget {
             child: child ?? const SizedBox.expand(),
           ),
         );
-        final progress = controller.syncProgress;
-        final notice = controller.operationNotice;
+        final progress = sync.progress;
+        final notice = sync.operationNotice;
 
         // Keep this hierarchy stable even when progress/notice values change.
         // Reparenting the Navigator while a route is being popped temporarily
@@ -52,7 +54,7 @@ class PavelVaultApp extends ConsumerWidget {
                     key: ValueKey(notice),
                     tween: Tween(begin: 1, end: 0),
                     duration:
-                        controller.motionPreference == MotionPreference.minimal
+                        settings.motionPreference == MotionPreference.minimal
                         ? const Duration(milliseconds: 1)
                         : const Duration(milliseconds: 320),
                     curve: Curves.easeOutCubic,
@@ -63,8 +65,8 @@ class PavelVaultApp extends ConsumerWidget {
                     child: Center(
                       child: _OperationNotice(
                         message: notice,
-                        isError: controller.operationNoticeIsError,
-                        inProgress: controller.operationNoticeInProgress,
+                        isError: sync.operationNoticeIsError,
+                        inProgress: sync.operationNoticeInProgress,
                       ),
                     ),
                   ),
@@ -73,11 +75,11 @@ class PavelVaultApp extends ConsumerWidget {
           ],
         );
       },
-      home: !controller.initialized
+      home: !session.initialized
           ? const _LoadingScreen()
-          : controller.webDav == null
+          : session.webDav == null
           ? const ConnectScreen()
-          : controller.locked
+          : session.locked
           ? const AppLockScreen()
           : const AppShell(),
     );

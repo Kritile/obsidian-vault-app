@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:pavel_vault/src/app/app_controller.dart';
+import 'package:pavel_vault/src/app/vault_controller.dart';
 import 'package:pavel_vault/src/app/app_shell.dart';
 import 'package:pavel_vault/src/app/providers.dart';
 import 'package:pavel_vault/src/core/markdown/obsidian_parser.dart';
@@ -27,7 +27,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          appControllerProvider.overrideWith((ref) => AppController()),
+          vaultControllerProvider.overrideWith((ref) => VaultController()),
         ],
         child: const MaterialApp(home: AppShell()),
       ),
@@ -87,7 +87,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          appControllerProvider.overrideWith((ref) => AppController()),
+          vaultControllerProvider.overrideWith((ref) => VaultController()),
         ],
         child: const MaterialApp(home: Scaffold(body: DashboardScreen())),
       ),
@@ -105,7 +105,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          appControllerProvider.overrideWith((ref) => AppController()),
+          vaultControllerProvider.overrideWith((ref) => VaultController()),
         ],
         child: const MaterialApp(home: Scaffold(body: VaultBrowserScreen())),
       ),
@@ -123,7 +123,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          appControllerProvider.overrideWith((ref) => AppController()),
+          vaultControllerProvider.overrideWith((ref) => VaultController()),
         ],
         child: const MaterialApp(home: Scaffold(body: ProjectsScreen())),
       ),
@@ -136,7 +136,7 @@ void main() {
   });
 
   testWidgets('project task row opens the task note', (tester) async {
-    final controller = AppController();
+    final controller = VaultController();
     controller.index.rebuild([
       VaultDocument(
         path: 'Projects/Test/Открываемая задача.md',
@@ -156,7 +156,7 @@ priority: high
     ]);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [appControllerProvider.overrideWith((ref) => controller)],
+        overrides: [vaultControllerProvider.overrideWith((ref) => controller)],
         child: const MaterialApp(home: Scaffold(body: ProjectsScreen())),
       ),
     );
@@ -185,7 +185,7 @@ priority: high
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          appControllerProvider.overrideWith((ref) => AppController()),
+          vaultControllerProvider.overrideWith((ref) => VaultController()),
         ],
         child: const MaterialApp(home: Scaffold(body: ReportsScreen())),
       ),
@@ -200,7 +200,7 @@ priority: high
   testWidgets('sports report has sortable columns without row checkboxes', (
     tester,
   ) async {
-    final controller = AppController();
+    final controller = VaultController();
     final now = DateTime.now();
     final date =
         '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-15';
@@ -231,7 +231,7 @@ assessment:
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [appControllerProvider.overrideWith((ref) => controller)],
+        overrides: [vaultControllerProvider.overrideWith((ref) => controller)],
         child: const MaterialApp(home: ReportsScreen()),
       ),
     );
@@ -282,7 +282,7 @@ await dv.view("Resources/Scripts/reports/dashboard");
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            appControllerProvider.overrideWith((ref) => AppController()),
+            vaultControllerProvider.overrideWith((ref) => VaultController()),
           ],
           child: MaterialApp(home: NoteScreen(note: note)),
         ),
@@ -302,7 +302,7 @@ await dv.view("Resources/Scripts/reports/dashboard");
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          appControllerProvider.overrideWith((ref) => AppController()),
+          vaultControllerProvider.overrideWith((ref) => VaultController()),
         ],
         child: const MaterialApp(home: ReportLayoutEditorScreen()),
       ),
@@ -324,7 +324,7 @@ await dv.view("Resources/Scripts/reports/dashboard");
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          appControllerProvider.overrideWith((ref) => AppController()),
+          vaultControllerProvider.overrideWith((ref) => VaultController()),
         ],
         child: const MaterialApp(home: SettingsScreen()),
       ),

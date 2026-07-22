@@ -32,7 +32,7 @@ class _VaultBrowserScreenState extends ConsumerState<VaultBrowserScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = ref.watch(appControllerProvider);
+    final controller = ref.watch(vaultControllerProvider);
     final searched = controller.index.search(_query);
     final notes = searched.where(_matchesCategory).toList()
       ..sort(_compareNotes);

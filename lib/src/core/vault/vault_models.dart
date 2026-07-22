@@ -20,12 +20,14 @@ class VaultDocument {
     required this.bytes,
     required this.modifiedAt,
     this.etag,
+    this.contentHash,
   });
 
   final String path;
   final Uint8List bytes;
   final DateTime modifiedAt;
   final String? etag;
+  final String? contentHash;
 
   bool get isMarkdown => path.toLowerCase().endsWith('.md');
   bool get isBase => path.toLowerCase().endsWith('.base');
@@ -39,11 +41,13 @@ class VaultDocument {
     Uint8List? bytes,
     DateTime? modifiedAt,
     String? etag,
+    String? contentHash,
   }) => VaultDocument(
     path: path,
     bytes: bytes ?? this.bytes,
     modifiedAt: modifiedAt ?? this.modifiedAt,
     etag: etag ?? this.etag,
+    contentHash: contentHash ?? this.contentHash,
   );
 }
 

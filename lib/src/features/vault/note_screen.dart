@@ -8,6 +8,7 @@ import '../../shared/obsidian_markdown_view.dart';
 import '../reports/reports_screen.dart';
 import '../../core/vault/period_report_data.dart';
 import '../../core/vault/training_yaml.dart';
+import '../../shared/rich_clipboard.dart';
 
 class NoteScreen extends ConsumerStatefulWidget {
   const NoteScreen({required this.note, super.key});
@@ -75,6 +76,26 @@ class _NoteScreenState extends ConsumerState<NoteScreen> {
               border: InputBorder.none,
               contentPadding: EdgeInsets.all(20),
             ),
+            contextMenuBuilder: (context, editableTextState) {
+              final items = editableTextState.contextMenuButtonItems
+                  .map(
+                    (item) => item.type != ContextMenuButtonType.paste
+                        ? item
+                        : ContextMenuButtonItem(
+                            type: item.type,
+                            label: item.label,
+                            onPressed: () {
+                              editableTextState.hideToolbar();
+                              RichClipboard.pasteInto(_source);
+                            },
+                          ),
+                  )
+                  .toList(growable: false);
+              return AdaptiveTextSelectionToolbar.buttonItems(
+                anchors: editableTextState.contextMenuAnchors,
+                buttonItems: items,
+              );
+            },
           )
         : _reportPeriod == null
         ? Column(
@@ -96,12 +117,13 @@ class _NoteScreenState extends ConsumerState<NoteScreen> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final controller = ref.read(appControllerProvider);
+    final sync = ref.read(syncControllerProvider);
+    final vault = ref.read(vaultControllerProvider);
     try {
-      await controller.saveNote(_note.document.path, _source.text);
+      await sync.saveNote(_note.document.path, _source.text);
       if (!mounted) return;
       setState(() {
-        _note = controller.index.byPath(_note.document.path) ?? _note;
+        _note = vault.index.byPath(_note.document.path) ?? _note;
         _editing = false;
         _saving = false;
       });

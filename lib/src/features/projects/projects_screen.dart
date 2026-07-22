@@ -21,7 +21,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = ref.watch(appControllerProvider);
+    final controller = ref.watch(vaultControllerProvider);
+    final projectService = ref.read(projectServiceProvider);
     final all = [...controller.index.projects];
     final projects = all
         .where(
@@ -127,8 +128,10 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                     child: ListTile(
                       leading: Checkbox(
                         value: complete,
-                        onChanged: (value) =>
-                            controller.setTaskComplete(task, value ?? false),
+                        onChanged: (value) => projectService.setTaskComplete(
+                          task,
+                          value ?? false,
+                        ),
                       ),
                       title: Text(
                         task.title,
@@ -247,7 +250,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                       ),
                     ),
                   ),
-                  onArchive: () => controller.setProjectArchived(
+                  onArchive: () => projectService.setArchived(
                     projects[index],
                     !_archived(projects[index]),
                   ),

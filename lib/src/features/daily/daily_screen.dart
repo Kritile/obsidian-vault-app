@@ -19,7 +19,7 @@ class _DailyScreenState extends ConsumerState<DailyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = ref.watch(appControllerProvider);
+    final controller = ref.watch(vaultControllerProvider);
     final end = _selected
         .add(const Duration(days: 1))
         .subtract(const Duration(milliseconds: 1));
@@ -244,7 +244,7 @@ class _DailyScreenState extends ConsumerState<DailyScreen> {
         description.text.trim().isNotEmpty &&
         parsedHours != null) {
       await ref
-          .read(appControllerProvider)
+          .read(dailyNoteServiceProvider)
           .addWorkEntry(
             date: _selected,
             description: description.text,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../core/vault/training_definition.dart';
+import '../../shared/duration_input_field.dart';
 
 class TrainingFormScreen extends ConsumerStatefulWidget {
   const TrainingFormScreen({required this.date, super.key});
@@ -132,31 +133,40 @@ class _TrainingFormScreenState extends ConsumerState<TrainingFormScreen> {
                     .map(
                       (metric) => SizedBox(
                         width: fieldWidth,
-                        child: TextFormField(
-                          key: ValueKey('${_sport.key}-${metric.key}'),
-                          controller: _metrics[metric.key],
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: InputDecoration(
-                            labelText: metric.label,
-                            suffixText: metric.unit.isEmpty
-                                ? null
-                                : metric.unit,
-                          ),
-                          validator: metric.required
-                              ? (value) =>
-                                    _number(value) == null ||
-                                        _number(value)! <= 0
-                                    ? 'Введите значение больше нуля'
-                                    : null
-                              : (value) =>
-                                    value != null &&
-                                        value.trim().isNotEmpty &&
-                                        _number(value) == null
-                                    ? 'Требуется число'
-                                    : null,
-                        ),
+                        child: metric.key == 'duration'
+                            ? DurationInputField(
+                                key: ValueKey('${_sport.key}-${metric.key}'),
+                                controller: _metrics[metric.key]!,
+                                label: metric.label,
+                                unit: DurationValueUnit.minutes,
+                                required: metric.required,
+                              )
+                            : TextFormField(
+                                key: ValueKey('${_sport.key}-${metric.key}'),
+                                controller: _metrics[metric.key],
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: InputDecoration(
+                                  labelText: metric.label,
+                                  suffixText: metric.unit.isEmpty
+                                      ? null
+                                      : metric.unit,
+                                ),
+                                validator: metric.required
+                                    ? (value) =>
+                                          _number(value) == null ||
+                                              _number(value)! <= 0
+                                          ? 'Введите значение больше нуля'
+                                          : null
+                                    : (value) =>
+                                          value != null &&
+                                              value.trim().isNotEmpty &&
+                                              _number(value) == null
+                                          ? 'Требуется число'
+                                          : null,
+                              ),
                       ),
                     )
                     .toList(growable: false),
@@ -206,8 +216,8 @@ class _TrainingFormScreenState extends ConsumerState<TrainingFormScreen> {
       _time.minute,
     );
     await ref
-        .read(appControllerProvider)
-        .addTraining(
+        .read(trainingServiceProvider)
+        .create(
           date: date,
           sportKey: _sportKey,
           metrics: {

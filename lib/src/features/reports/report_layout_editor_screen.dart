@@ -20,7 +20,7 @@ class _ReportLayoutEditorScreenState
   @override
   void initState() {
     super.initState();
-    _blocks = [...ref.read(appControllerProvider).reportLayout.blocks];
+    _blocks = [...ref.read(reportControllerProvider).layout.blocks];
   }
 
   @override
@@ -178,8 +178,8 @@ class _ReportLayoutEditorScreenState
   Future<void> _save() async {
     setState(() => _saving = true);
     await ref
-        .read(appControllerProvider)
-        .saveReportLayout(ReportLayoutConfig(blocks: _blocks));
+        .read(reportControllerProvider)
+        .saveLayout(ReportLayoutConfig(blocks: _blocks));
     if (!mounted) return;
     setState(() => _saving = false);
     Navigator.pop(context);

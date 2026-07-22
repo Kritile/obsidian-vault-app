@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -27,11 +29,63 @@ class SyncEngine {
   final WebDavClient _remote;
   final void Function(SyncProgress progress)? _onProgress;
   final _sha256 = Sha256();
-  bool _running = false;
+  final Queue<_QueueEntry> _operations = Queue<_QueueEntry>();
+  final Map<String, _FileQueueEntry> _pendingFiles = {};
+  bool _draining = false;
 
-  Future<SyncResult> synchronize() async {
-    if (_running) throw StateError('Synchronization is already running');
-    _running = true;
+  Future<SyncResult> synchronize() {
+    final operation = _QueuedOperation<SyncResult>(_synchronize);
+    _enqueue(operation);
+    return operation.future;
+  }
+
+  Future<SyncResult> synchronizeFile(String path) {
+    final pending = _pendingFiles[path];
+    if (pending != null) return pending.future;
+    final operation = _FileQueueEntry(path, () => _synchronizeFile(path));
+    _pendingFiles[path] = operation;
+    _enqueue(operation);
+    return operation.future;
+  }
+
+  Future<void> resolve(
+    SyncConflict conflict,
+    ConflictResolution resolution, {
+    Uint8List? merged,
+  }) {
+    if (resolution == ConflictResolution.deferred) return Future.value();
+    final operation = _QueuedOperation<void>(
+      () => _resolve(conflict, resolution, merged: merged),
+    );
+    _enqueue(operation);
+    return operation.future;
+  }
+
+  void _enqueue(_QueueEntry operation) {
+    _operations.add(operation);
+    unawaited(_drain());
+  }
+
+  Future<void> _drain() async {
+    if (_draining) return;
+    _draining = true;
+    try {
+      while (_operations.isNotEmpty) {
+        final operation = _operations.removeFirst();
+        if (operation case final _FileQueueEntry file) {
+          if (identical(_pendingFiles[file.path], file)) {
+            _pendingFiles.remove(file.path);
+          }
+        }
+        await operation.run();
+      }
+    } finally {
+      _draining = false;
+      if (_operations.isNotEmpty) unawaited(_drain());
+    }
+  }
+
+  Future<SyncResult> _synchronize() async {
     final batch = _local is BatchableVaultRepository
         ? _local as BatchableVaultRepository
         : null;
@@ -39,8 +93,12 @@ class SyncEngine {
     final stopwatch = Stopwatch()..start();
     AppLog.info('Sync', 'Синхронизация начата');
     try {
-      final state = await _loadState();
-      final local = {for (final file in await _local.list()) file.path: file};
+      final state = await _loadState()
+        ..removeWhere((path, _) => _ignored(path));
+      final local = {
+        for (final file in await _local.list())
+          if (!_ignored(file.path)) file.path: file,
+      };
       _progress('Получение списка файлов с WebDAV');
       final remote = {
         for (final file in await _remote.listTree())
@@ -64,7 +122,7 @@ class SyncEngine {
         final remoteFile = remote[path];
         final localHash = localFile == null
             ? null
-            : await _hash(localFile.bytes);
+            : localFile.contentHash ?? await _hash(localFile.bytes);
         final localChanged = old != null && localHash != old.hash;
         final remoteChanged = old != null && remoteFile?.etag != old.etag;
 
@@ -207,13 +265,10 @@ class SyncEngine {
       rethrow;
     } finally {
       await batch?.endBatch();
-      _running = false;
     }
   }
 
-  Future<SyncResult> synchronizeFile(String path) async {
-    if (_running) throw StateError('Synchronization is already running');
-    _running = true;
+  Future<SyncResult> _synchronizeFile(String path) async {
     final stopwatch = Stopwatch()..start();
     AppLog.info('Sync', 'Точечная синхронизация начата: $path');
     try {
@@ -223,7 +278,7 @@ class SyncEngine {
       }
       final state = await _loadState();
       final old = state[path];
-      final localHash = await _hash(localFile.bytes);
+      final localHash = localFile.contentHash ?? await _hash(localFile.bytes);
       if (old != null && old.hash == localHash) {
         AppLog.info('Sync', 'Файл не изменился, отправка не требуется: $path');
         return const SyncResult(downloaded: 0, uploaded: 0, conflicts: []);
@@ -274,17 +329,14 @@ class SyncEngine {
         stackTrace,
       );
       rethrow;
-    } finally {
-      _running = false;
     }
   }
 
-  Future<void> resolve(
+  Future<void> _resolve(
     SyncConflict conflict,
     ConflictResolution resolution, {
     Uint8List? merged,
   }) async {
-    if (resolution == ConflictResolution.deferred) return;
     AppLog.info(
       'Sync',
       'Разрешение конфликта ${conflict.path}: ${resolution.name}',
@@ -373,6 +425,9 @@ class SyncEngine {
   String _baseKey(String path) => '__base__:$path';
 
   bool _ignored(String path) =>
+      path == '.obsidian' ||
+      path.startsWith('.obsidian/') ||
+      path.contains('/.obsidian/') ||
       path.startsWith('.git/') ||
       path.startsWith('.trash/') ||
       path.endsWith('.tmp') ||
@@ -403,6 +458,35 @@ class SyncEngine {
       ),
     ),
   );
+}
+
+abstract interface class _QueueEntry {
+  Future<void> run();
+}
+
+class _QueuedOperation<T> implements _QueueEntry {
+  _QueuedOperation(this._action);
+
+  final Future<T> Function() _action;
+  final Completer<T> _completer = Completer<T>();
+
+  Future<T> get future => _completer.future;
+
+  @override
+  Future<void> run() async {
+    try {
+      _completer.complete(await _action());
+    } catch (error, stackTrace) {
+      _completer.completeError(error, stackTrace);
+    }
+  }
+}
+
+final class _FileQueueEntry extends _QueuedOperation<SyncResult> {
+  _FileQueueEntry(this.path, Future<SyncResult> Function() action)
+    : super(action);
+
+  final String path;
 }
 
 class _SyncRecord {

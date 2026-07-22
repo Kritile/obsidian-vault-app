@@ -183,6 +183,18 @@ class CredentialStore {
   Future<void> saveMotionPreference(MotionPreference value) =>
       _storage.write(key: 'settings.motion', value: value.name);
 
+  Future<Duration> readAutoLockDelay() async {
+    final seconds = int.tryParse(
+      await _storage.read(key: 'settings.autoLockSeconds') ?? '',
+    );
+    return Duration(seconds: seconds ?? 5 * 60);
+  }
+
+  Future<void> saveAutoLockDelay(Duration value) => _storage.write(
+    key: 'settings.autoLockSeconds',
+    value: value.inSeconds.toString(),
+  );
+
   Future<bool> verifyPin(String pin) async {
     final expected = await _storage.read(key: 'lock.pinHash');
     if (expected == null) return false;

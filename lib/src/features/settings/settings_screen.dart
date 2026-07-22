@@ -23,13 +23,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void initState() {
     super.initState();
     _usageFuture = Future.microtask(
-      () => ref.read(appControllerProvider).storageUsage(),
+      () => ref.read(settingsControllerProvider).storageUsage(),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = ref.watch(appControllerProvider);
+    final session = ref.watch(sessionControllerProvider);
+    final settings = ref.watch(settingsControllerProvider);
     final narrow = MediaQuery.sizeOf(context).width < 480;
     return PageScaffold(
       title: 'Настройки',
@@ -46,14 +47,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         children: [
           _Header(icon: Icons.cloud_outlined, title: 'WebDAV-хранилища'),
           const SizedBox(height: 8),
-          ...controller.webDavProfiles.map(
+          ...session.webDavProfiles.map(
             (profile) => _ProfileCard(
               profile: profile,
-              active: profile.id == controller.activeProfileId,
-              busy: controller.busy,
+              active: profile.id == session.activeProfileId,
+              busy: session.busy,
               onSelect: () => _switch(profile),
               onEdit: () => _editProfile(profile),
               onDelete: () => _deleteProfile(profile),
+            ),
+          ),
+          const SizedBox(height: 22),
+          _Header(icon: Icons.lock_clock_outlined, title: 'Безопасность'),
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: DropdownButtonFormField<Duration>(
+                isExpanded: true,
+                initialValue: session.autoLockDelay,
+                decoration: const InputDecoration(
+                  labelText: 'Блокировать после сворачивания',
+                  prefixIcon: Icon(Icons.timer_outlined),
+                ),
+                items: const [
+                  DropdownMenuItem(value: Duration.zero, child: Text('Сразу')),
+                  DropdownMenuItem(
+                    value: Duration(minutes: 1),
+                    child: Text('Через 1 минуту'),
+                  ),
+                  DropdownMenuItem(
+                    value: Duration(minutes: 5),
+                    child: Text('Через 5 минут'),
+                  ),
+                  DropdownMenuItem(
+                    value: Duration(minutes: 10),
+                    child: Text('Через 10 минут'),
+                  ),
+                  DropdownMenuItem(
+                    value: Duration(minutes: 30),
+                    child: Text('Через 30 минут'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) session.setAutoLockDelay(value);
+                },
+              ),
             ),
           ),
           const SizedBox(height: 22),
@@ -68,14 +107,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onClearImages: () => _clear(
                 'Очистить кеш изображений?',
                 'Сетевые изображения при необходимости загрузятся повторно.',
-                controller.clearImageCache,
+                settings.clearImageCache,
               ),
               onClearInactive: () => _clear(
                 'Очистить кеш неактивных хранилищ?',
                 'Несинхронизированные данные неактивных профилей будут удалены.',
-                controller.clearInactiveVaultCaches,
+                settings.clearInactiveVaultCaches,
               ),
-              onClearCurrent: () => _clearCurrent(controller),
+              onClearCurrent: _clearCurrent,
             ),
           ),
           const SizedBox(height: 10),
@@ -84,7 +123,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               padding: const EdgeInsets.all(16),
               child: DropdownButtonFormField<int>(
                 isExpanded: true,
-                initialValue: controller.imageCacheLimitBytes,
+                initialValue: settings.imageCacheLimitBytes,
                 decoration: const InputDecoration(
                   labelText: 'Лимит кеша изображений',
                   prefixIcon: Icon(Icons.photo_library_outlined),
@@ -110,7 +149,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ],
                 onChanged: (value) async {
                   if (value == null) return;
-                  await controller.setImageCacheLimit(value);
+                  await settings.setImageCacheLimit(value);
                   _refreshUsage();
                 },
               ),
@@ -137,9 +176,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           size: 18,
                         ),
                         label: Text(_motionLabel(value)),
-                        selected: controller.motionPreference == value,
-                        onSelected: (_) =>
-                            controller.setMotionPreference(value),
+                        selected: settings.motionPreference == value,
+                        onSelected: (_) => settings.setMotionPreference(value),
                       ),
                     )
                     .toList(),
@@ -152,7 +190,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _switch(WebDavProfile profile) async {
-    final controller = ref.read(appControllerProvider);
+    final controller = ref.read(sessionControllerProvider);
     try {
       await controller.switchWebDavProfile(profile.id);
     } catch (error) {
@@ -191,7 +229,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (result == null) return;
     try {
       await ref
-          .read(appControllerProvider)
+          .read(sessionControllerProvider)
           .saveWebDavProfile(
             id: profile?.id,
             name: result.name,
@@ -237,7 +275,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (action == null) return;
     try {
       await ref
-          .read(appControllerProvider)
+          .read(sessionControllerProvider)
           .deleteWebDavProfile(profile.id, deleteCache: action == 'delete');
     } catch (error) {
       if (mounted) {
@@ -249,7 +287,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _refreshUsage();
   }
 
-  Future<void> _clearCurrent(dynamic controller) async {
+  Future<void> _clearCurrent() async {
     final synced = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -270,9 +308,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
     if (synced != true) return;
-    await controller.synchronize();
-    if (controller.error == null && controller.conflicts.isEmpty) {
-      await controller.clearCurrentVaultCache();
+    final sync = ref.read(syncControllerProvider);
+    await sync.synchronize();
+    if (sync.error == null && sync.conflicts.isEmpty) {
+      await ref.read(settingsControllerProvider).clearCurrentVaultCache();
+      sync.configure(ref.read(sessionControllerProvider).activeProfile);
       _refreshUsage();
     }
   }
@@ -308,7 +348,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (mounted) {
       setState(() {
         _usageRevision++;
-        _usageFuture = ref.read(appControllerProvider).storageUsage();
+        _usageFuture = ref.read(settingsControllerProvider).storageUsage();
       });
     }
   }

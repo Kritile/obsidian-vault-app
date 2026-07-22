@@ -29,11 +29,8 @@ class PeriodReportView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.watch(appControllerProvider);
-    final data = const PeriodReportDataBuilder().build(
-      controller.index.notes,
-      period,
-    );
+    final reports = ref.watch(reportControllerProvider);
+    final data = reports.build(period);
     void open(ParsedNote note) => Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => NoteScreen(note: note)));
@@ -47,7 +44,7 @@ class PeriodReportView extends ConsumerWidget {
       children: [
         _ReportLayoutContent(
           data: data,
-          blocks: controller.reportLayout.blocks,
+          blocks: reports.layout.blocks,
           onOpen: open,
         ),
       ],
@@ -58,15 +55,14 @@ class PeriodReportView extends ConsumerWidget {
 class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   String _type = 'monthly';
   DateTime _anchor = DateTime.now();
-  final _builder = const PeriodReportDataBuilder();
   final _service = ReportService();
 
   @override
   Widget build(BuildContext context) {
-    final controller = ref.watch(appControllerProvider);
+    final reports = ref.watch(reportControllerProvider);
     final period = _period();
-    final data = _builder.build(controller.index.notes, period);
-    final workEntries = controller.index.workEntries(period);
+    final data = reports.build(period);
+    final workEntries = reports.workEntries(period);
     return PageScaffold(
       title: 'Отчёты',
       subtitle:
@@ -112,7 +108,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           const SizedBox(height: 18),
           _ReportLayoutContent(
             data: data,
-            blocks: controller.reportLayout.blocks,
+            blocks: reports.layout.blocks,
             onOpen: _openNote,
           ),
         ],
@@ -161,7 +157,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       };
       final path = 'Resources/Reports/$folder/$name.md';
       await ref
-          .read(appControllerProvider)
+          .read(syncControllerProvider)
           .saveNote(
             path,
             _service.markdown(
@@ -1524,11 +1520,13 @@ class _AnimatedReportSection extends ConsumerWidget {
         tween: Tween(begin: 0, end: 1),
         duration: motionDuration(
           context,
-          ref.watch(appControllerProvider).motionPreference,
+          ref.watch(settingsControllerProvider).motionPreference,
           expressive: 380 + index * 80,
           balanced: 240 + index * 35,
         ),
-        curve: motionCurve(ref.read(appControllerProvider).motionPreference),
+        curve: motionCurve(
+          ref.read(settingsControllerProvider).motionPreference,
+        ),
         builder: (context, value, child) => Opacity(
           opacity: value.clamp(0, 1),
           child: Transform.translate(

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
@@ -48,6 +49,7 @@ class EncryptedObjectStore {
       }
     }
     await _root!.create(recursive: true);
+    await _removeStaleTemporaryFiles();
     AppLog.info(
       'EncryptedStore',
       'Локальный зашифрованный кэш: ${_root!.path}',
@@ -86,7 +88,16 @@ class EncryptedObjectStore {
       ...box.mac.bytes,
       ...box.cipherText,
     ];
-    await _file(key).writeAsBytes(payload, flush: true);
+    final target = _file(key);
+    final temporary = File(
+      '${target.path}.tmp-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}',
+    );
+    try {
+      await temporary.writeAsBytes(payload, flush: true);
+      await temporary.rename(target.path);
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
+    }
   }
 
   Future<Uint8List?> read(String key) async {
@@ -136,6 +147,31 @@ class EncryptedObjectStore {
     return total;
   }
 
+  Future<Set<String>> keys() async {
+    _ensureReady();
+    final result = <String>{};
+    await for (final entity in _root!.list(followLinks: false)) {
+      if (entity is! File || !entity.path.endsWith('.pvo')) continue;
+      final encoded = p.basenameWithoutExtension(entity.path);
+      try {
+        final padding = '=' * ((4 - encoded.length % 4) % 4);
+        result.add(utf8.decode(base64Url.decode('$encoded$padding')));
+      } catch (error) {
+        AppLog.warning(
+          'EncryptedStore',
+          'Пропущено имя объекта, которое невозможно декодировать: $encoded',
+        );
+      }
+    }
+    return result;
+  }
+
+  Future<DateTime?> lastModified(String key) async {
+    _ensureReady();
+    final file = _file(key);
+    return await file.exists() ? file.lastModified() : null;
+  }
+
   File _file(String key) {
     final safe = base64Url.encode(utf8.encode(key)).replaceAll('=', '');
     return File(p.join(_root!.path, '$safe.pvo'));
@@ -144,6 +180,14 @@ class EncryptedObjectStore {
   void _ensureReady() {
     if (_root == null || _key == null) {
       throw StateError('EncryptedObjectStore.initialize() was not called');
+    }
+  }
+
+  Future<void> _removeStaleTemporaryFiles() async {
+    await for (final entity in _root!.list(followLinks: false)) {
+      if (entity is File && p.basename(entity.path).contains('.pvo.tmp-')) {
+        await entity.delete();
+      }
     }
   }
 

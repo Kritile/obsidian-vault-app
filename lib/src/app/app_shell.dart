@@ -74,7 +74,9 @@ class _AppShellState extends ConsumerState<AppShell>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
-      ref.read(appControllerProvider).lock();
+      ref.read(sessionControllerProvider).enterBackground();
+    } else if (state == AppLifecycleState.resumed) {
+      ref.read(sessionControllerProvider).resume();
     }
   }
 
@@ -102,7 +104,7 @@ class _AppShellState extends ConsumerState<AppShell>
       const SettingsScreen(),
       _MoreScreen(onSelect: _selectScreen),
     ];
-    final motion = ref.watch(appControllerProvider).motionPreference;
+    final motion = ref.watch(settingsControllerProvider).motionPreference;
     final tabDuration = motionDuration(
       context,
       motion,

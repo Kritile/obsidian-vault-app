@@ -32,21 +32,31 @@ Future<void> showCreateEntityPicker(BuildContext context, WidgetRef ref) async {
   );
   if (values == null || !context.mounted) return;
   try {
-    final path = await ref.read(appControllerProvider).createNativeEntity(definition.kind, values);
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Создано: $path')));
+    final path = await ref
+        .read(nativeEntityServiceProvider)
+        .create(definition.kind, values);
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Создано: $path')));
+    }
   } catch (error) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$error')));
+    }
   }
 }
 
 IconData entityKindIcon(NativeEntityKind kind) => switch (kind) {
-      NativeEntityKind.book => Icons.menu_book_outlined,
-      NativeEntityKind.recipe => Icons.restaurant_menu,
-      NativeEntityKind.plant => Icons.local_florist_outlined,
-      NativeEntityKind.tea => Icons.emoji_food_beverage_outlined,
-      NativeEntityKind.medicine => Icons.medication_outlined,
-      NativeEntityKind.note => Icons.note_add_outlined,
-    };
+  NativeEntityKind.book => Icons.menu_book_outlined,
+  NativeEntityKind.recipe => Icons.restaurant_menu,
+  NativeEntityKind.plant => Icons.local_florist_outlined,
+  NativeEntityKind.tea => Icons.emoji_food_beverage_outlined,
+  NativeEntityKind.medicine => Icons.medication_outlined,
+  NativeEntityKind.note => Icons.note_add_outlined,
+};
 
 class EntityFormScreen extends StatefulWidget {
   const EntityFormScreen({required this.definition, super.key});
@@ -106,7 +116,10 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                     child: FilledButton.icon(
                       onPressed: _submit,
                       icon: const Icon(Icons.save_outlined),
-                      label: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('Создать')),
+                      label: const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Text('Создать'),
+                      ),
                     ),
                   ),
                 ],
@@ -131,7 +144,11 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
       return DropdownButtonFormField<String>(
         initialValue: _values[field.key] as String?,
         decoration: InputDecoration(labelText: field.label),
-        items: field.options.map((option) => DropdownMenuItem(value: option, child: Text(option))).toList(growable: false),
+        items: field.options
+            .map(
+              (option) => DropdownMenuItem(value: option, child: Text(option)),
+            )
+            .toList(growable: false),
         onChanged: (value) => _values[field.key] = value,
       );
     }
@@ -139,20 +156,37 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
       controller: _controllers[field.key],
       minLines: field.type == EntityFieldType.multiline ? 4 : 1,
       maxLines: field.type == EntityFieldType.multiline ? 10 : 1,
-      keyboardType: field.type == EntityFieldType.number ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
-      decoration: InputDecoration(labelText: field.label, hintText: field.hint, alignLabelWithHint: field.type == EntityFieldType.multiline),
-      validator: field.required ? (value) => value == null || value.trim().isEmpty ? 'Обязательное поле' : null : null,
+      keyboardType: field.type == EntityFieldType.number
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : TextInputType.text,
+      decoration: InputDecoration(
+        labelText: field.label,
+        hintText: field.hint,
+        alignLabelWithHint: field.type == EntityFieldType.multiline,
+      ),
+      validator: field.required
+          ? (value) => value == null || value.trim().isEmpty
+                ? 'Обязательное поле'
+                : null
+          : null,
     );
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     for (final entry in _controllers.entries) {
-      final field = widget.definition.fields.firstWhere((item) => item.key == entry.key);
+      final field = widget.definition.fields.firstWhere(
+        (item) => item.key == entry.key,
+      );
       final raw = entry.value.text.trim();
       _values[entry.key] = switch (field.type) {
         EntityFieldType.number => num.tryParse(raw.replaceAll(',', '.')) ?? raw,
-        EntityFieldType.tags => raw.split(',').map((item) => item.trim()).where((item) => item.isNotEmpty).toList(),
+        EntityFieldType.tags =>
+          raw
+              .split(',')
+              .map((item) => item.trim())
+              .where((item) => item.isNotEmpty)
+              .toList(),
         _ => raw,
       };
     }

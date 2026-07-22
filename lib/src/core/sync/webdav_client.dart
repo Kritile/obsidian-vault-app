@@ -123,18 +123,32 @@ class WebDavClient {
     );
     final result = <WebDavEntry>[];
     final pending = <String>[''];
+    final visited = <String>{};
     while (pending.isNotEmpty) {
-      final directory = pending.removeLast();
-      final entries = await _listDirectory(directory);
-      for (final entry in entries) {
-        if (entry.path == directory || entry.path.isEmpty) continue;
-        result.add(entry);
-        if (entry.isDirectory) pending.add(entry.path);
+      final batch = pending.take(6).toList(growable: false);
+      pending.removeRange(0, batch.length);
+      final directories = batch.where(visited.add).toList(growable: false);
+      final batches = await Future.wait(directories.map(_listDirectory));
+      for (var index = 0; index < directories.length; index++) {
+        final directory = directories[index];
+        for (final entry in batches[index]) {
+          if (entry.path == directory || entry.path.isEmpty) continue;
+          if (_ignoredTree(entry.path)) continue;
+          result.add(entry);
+          if (entry.isDirectory && !visited.contains(entry.path)) {
+            pending.add(entry.path);
+          }
+        }
       }
     }
     AppLog.info('WebDAV', 'Дерево получено: ${result.length} объектов');
     return result;
   }
+
+  bool _ignoredTree(String path) =>
+      path == '.obsidian' ||
+      path.startsWith('.obsidian/') ||
+      path.contains('/.obsidian/');
 
   Future<List<WebDavEntry>> _listDirectory(String directory) async {
     final response = await _dio.request<String>(

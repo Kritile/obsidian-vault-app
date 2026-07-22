@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/providers.dart';
+import '../../shared/duration_input_field.dart';
 import '../vault/note_screen.dart';
 
 class CreateDailyNoteScreen extends ConsumerStatefulWidget {
@@ -83,16 +84,10 @@ class _CreateDailyNoteScreenState extends ConsumerState<CreateDailyNoteScreen> {
                   ),
                   SizedBox(
                     width: width,
-                    child: TextFormField(
+                    child: DurationInputField(
                       controller: _sleep,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Сон',
-                        suffixText: 'часов',
-                      ),
-                      validator: (value) => _optionalNumber(value),
+                      label: 'Сон',
+                      unit: DurationValueUnit.hours,
                     ),
                   ),
                   SizedBox(
@@ -160,19 +155,13 @@ class _CreateDailyNoteScreenState extends ConsumerState<CreateDailyNoteScreen> {
     return number == null || number < 0 ? 'Введите целое число' : null;
   }
 
-  String? _optionalNumber(String? value) {
-    final text = value?.trim().replaceAll(',', '.') ?? '';
-    if (text.isEmpty) return null;
-    final number = double.tryParse(text);
-    return number == null || number < 0 ? 'Введите число' : null;
-  }
-
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
     setState(() => _saving = true);
-    final controller = ref.read(appControllerProvider);
+    final service = ref.read(dailyNoteServiceProvider);
+    final vault = ref.read(vaultControllerProvider);
     try {
-      final path = await controller.createDailyNote(
+      final path = await service.create(
         date: widget.date,
         steps: _steps.text,
         sleep: _sleep.text.replaceAll(',', '.'),
@@ -180,7 +169,7 @@ class _CreateDailyNoteScreenState extends ConsumerState<CreateDailyNoteScreen> {
         completed: _completed.text,
         tomorrow: _tomorrow.text,
       );
-      final note = controller.index.byPath(path);
+      final note = vault.index.byPath(path);
       if (!mounted) return;
       if (note == null) {
         throw StateError('Созданная заметка не найдена в индексе');
