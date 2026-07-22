@@ -1,3 +1,6 @@
+// Named public constructor arguments intentionally initialize private fields.
+// ignore_for_file: prefer_initializing_formals
+
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
@@ -32,14 +35,18 @@ class SyncEngine {
   final Queue<_QueueEntry> _operations = Queue<_QueueEntry>();
   final Map<String, _FileQueueEntry> _pendingFiles = {};
   bool _draining = false;
+  bool _closed = false;
+  Completer<void>? _idleCompleter;
 
   Future<SyncResult> synchronize() {
+    if (_closed) return Future.error(_closedError());
     final operation = _QueuedOperation<SyncResult>(_synchronize);
     _enqueue(operation);
     return operation.future;
   }
 
   Future<SyncResult> synchronizeFile(String path) {
+    if (_closed) return Future.error(_closedError());
     final pending = _pendingFiles[path];
     if (pending != null) return pending.future;
     final operation = _FileQueueEntry(path, () => _synchronizeFile(path));
@@ -53,6 +60,7 @@ class SyncEngine {
     ConflictResolution resolution, {
     Uint8List? merged,
   }) {
+    if (_closed) return Future.error(_closedError());
     if (resolution == ConflictResolution.deferred) return Future.value();
     final operation = _QueuedOperation<void>(
       () => _resolve(conflict, resolution, merged: merged),
@@ -60,6 +68,14 @@ class SyncEngine {
     _enqueue(operation);
     return operation.future;
   }
+
+  Future<void> close() {
+    _closed = true;
+    if (!_draining && _operations.isEmpty) return Future.value();
+    return (_idleCompleter ??= Completer<void>()).future;
+  }
+
+  StateError _closedError() => StateError('SyncEngine is closed');
 
   void _enqueue(_QueueEntry operation) {
     _operations.add(operation);
@@ -81,7 +97,12 @@ class SyncEngine {
       }
     } finally {
       _draining = false;
-      if (_operations.isNotEmpty) unawaited(_drain());
+      if (_operations.isNotEmpty) {
+        unawaited(_drain());
+      } else {
+        _idleCompleter?.complete();
+        _idleCompleter = null;
+      }
     }
   }
 

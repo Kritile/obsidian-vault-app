@@ -65,6 +65,30 @@ void main() {
       expect(remote.uploads.map(utf8.decode), ['version 1', 'version 3']);
     },
   );
+
+  test('close rejects new work and waits for the active queue', () async {
+    final local = _MemoryVault()..put('note.md', 'version 1');
+    final remote = _FakeWebDav()..firstUploadGate = Completer<void>();
+    final engine = SyncEngine(
+      local: local,
+      store: _MemoryStore(),
+      remote: remote,
+    );
+
+    final active = engine.synchronizeFile('note.md');
+    await remote.uploadStarted.future;
+    var closed = false;
+    final closing = engine.close().then((_) => closed = true);
+
+    await Future<void>.delayed(Duration.zero);
+    expect(closed, isFalse);
+    await expectLater(engine.synchronize(), throwsA(isA<StateError>()));
+
+    remote.firstUploadGate!.complete();
+    await active;
+    await closing;
+    expect(closed, isTrue);
+  });
 }
 
 class _MemoryVault implements VaultRepository {

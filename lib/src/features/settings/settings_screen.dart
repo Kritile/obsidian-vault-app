@@ -117,6 +117,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onClearCurrent: _clearCurrent,
             ),
           ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.verified_outlined),
+              title: const Text('Проверить целостность кеша'),
+              subtitle: const Text(
+                'Полная расшифровка и сверка manifest выполняется вручную',
+              ),
+              onTap: _verifyCache,
+            ),
+          ),
           const SizedBox(height: 10),
           Card(
             child: Padding(
@@ -311,6 +321,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final sync = ref.read(syncControllerProvider);
     await sync.synchronize();
     if (sync.error == null && sync.conflicts.isEmpty) {
+      await sync.close();
       await ref.read(settingsControllerProvider).clearCurrentVaultCache();
       sync.configure(ref.read(sessionControllerProvider).activeProfile);
       _refreshUsage();
@@ -342,6 +353,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (confirmed != true) return;
     await action();
     _refreshUsage();
+  }
+
+  Future<void> _verifyCache() async {
+    await ref.read(settingsControllerProvider).verifyCurrentVaultCache();
+    _refreshUsage();
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Проверка кеша завершена')));
   }
 
   void _refreshUsage() {
@@ -537,6 +557,7 @@ class _ProfileDialogState extends State<_ProfileDialog> {
   late final TextEditingController username;
   late final TextEditingController password;
   String? error;
+  bool _httpWarningAccepted = false;
   @override
   void initState() {
     super.initState();
@@ -573,6 +594,10 @@ class _ProfileDialogState extends State<_ProfileDialog> {
             const SizedBox(height: 10),
             TextField(
               controller: url,
+              onChanged: (_) => setState(() {
+                _httpWarningAccepted = false;
+                error = null;
+              }),
               decoration: const InputDecoration(labelText: 'WebDAV URL'),
             ),
             const SizedBox(height: 10),
@@ -611,7 +636,19 @@ class _ProfileDialogState extends State<_ProfileDialog> {
   void _finish() {
     final uri = WebDavPathCodec.parseBaseUrl(url.text);
     if (uri == null || username.text.trim().isEmpty || password.text.isEmpty) {
-      setState(() => error = 'Проверьте URL, логин и пароль');
+      setState(
+        () => error = uri == null
+            ? 'Публичный WebDAV требует HTTPS'
+            : 'Проверьте логин и пароль',
+      );
+      return;
+    }
+    final warning = WebDavPathCodec.securityWarning(uri);
+    if (warning != null && !_httpWarningAccepted) {
+      setState(() {
+        _httpWarningAccepted = true;
+        error = '$warning Нажмите «Проверить и сохранить» ещё раз.';
+      });
       return;
     }
     Navigator.pop(

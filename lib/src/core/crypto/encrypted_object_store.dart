@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -16,18 +17,34 @@ class EncryptedObjectStore {
     Cipher? cipher,
     this.namespace = 'default',
     this.migrateLegacy = false,
+    @visibleForTesting Directory? rootDirectory,
+    @visibleForTesting SecretKey? secretKey,
+    @visibleForTesting this.beforeAtomicRename,
   }) : _secureStorage = secureStorage ?? const FlutterSecureStorage(),
-       _cipher = cipher ?? AesGcm.with256bits();
+       _cipher = cipher ?? AesGcm.with256bits(),
+       _rootOverride = rootDirectory,
+       _providedKey = secretKey;
 
   static const _masterKeyName = 'pavel_vault.master_key.v1';
   final FlutterSecureStorage _secureStorage;
   final Cipher _cipher;
   final String namespace;
   final bool migrateLegacy;
+  final Directory? _rootOverride;
+  final SecretKey? _providedKey;
+  @visibleForTesting
+  final Future<void> Function(File temporary, File target)? beforeAtomicRename;
   SecretKey? _key;
   Directory? _root;
 
   Future<void> initialize() async {
+    if (_rootOverride != null) {
+      _root = _rootOverride;
+      await _root!.create(recursive: true);
+      await _removeStaleTemporaryFiles();
+      _key = _providedKey ?? SecretKey(List<int>.filled(32, 0x2a));
+      return;
+    }
     final support = await getApplicationSupportDirectory();
     final legacy = Directory(p.join(support.path, 'encrypted_vault'));
     _root = Directory(p.join(legacy.path, _safeNamespace(namespace)));
@@ -94,6 +111,7 @@ class EncryptedObjectStore {
     );
     try {
       await temporary.writeAsBytes(payload, flush: true);
+      await beforeAtomicRename?.call(temporary, target);
       await temporary.rename(target.path);
     } finally {
       if (await temporary.exists()) await temporary.delete();

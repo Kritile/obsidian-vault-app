@@ -1,3 +1,6 @@
+// Named public constructor arguments intentionally initialize private fields.
+// ignore_for_file: prefer_initializing_formals
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -196,6 +199,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> _activateProfile(WebDavProfile profile) async {
+    await _sync.close();
     activeProfileId = profile.id;
     await _vault.activateProfile(
       profile,

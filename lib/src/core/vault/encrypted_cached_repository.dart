@@ -21,12 +21,19 @@ class EncryptedCachedRepository
   var _manifestDirty = false;
   final _sha256 = Sha256();
 
-  Future<void> initialize() async {
+  Future<void> initialize({bool verifyIntegrity = false}) async {
     await _store.initialize();
     final loaded = await _loadManifest();
     _manifest.addAll(loaded.entries);
     final journalPresent = await _safeRead(_batchJournalKey) != null;
-    final repaired = await _reconcileWithStoredObjects();
+    final requiresReconciliation =
+        verifyIntegrity ||
+        loaded.recoveredFromBackup ||
+        loaded.legacy ||
+        journalPresent;
+    final repaired = requiresReconciliation
+        ? await _reconcileWithStoredObjects()
+        : false;
     if (loaded.recoveredFromBackup ||
         loaded.legacy ||
         repaired ||
@@ -38,6 +45,11 @@ class EncryptedCachedRepository
       'Cache',
       'Загружен локальный manifest v$_formatVersion: ${_manifest.length} файлов',
     );
+  }
+
+  Future<void> verifyIntegrity() async {
+    final repaired = await _reconcileWithStoredObjects();
+    if (repaired) await _saveManifest();
   }
 
   @override

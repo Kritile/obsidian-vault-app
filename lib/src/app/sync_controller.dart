@@ -11,14 +11,31 @@ import '../core/vault/report_layout.dart';
 import '../shared/app_log.dart';
 import 'vault_controller.dart';
 
+typedef SyncEngineFactory =
+    SyncEngine Function(
+      WebDavProfile profile,
+      ValueChanged<SyncProgress> onProgress,
+    );
+
 class SyncController extends ChangeNotifier {
-  SyncController(this._vault);
+  SyncController(VaultController vault, {SyncEngineFactory? engineFactory})
+    : _vault = vault,
+      _engineFactory =
+          engineFactory ??
+          ((profile, onProgress) => SyncEngine(
+            local: vault.cache,
+            store: vault.store,
+            remote: WebDavClient(profile.credentials),
+            onProgress: onProgress,
+          ));
 
   final VaultController _vault;
+  final SyncEngineFactory _engineFactory;
   SyncEngine? _engine;
   Timer? _noticeTimer;
 
-  bool busy = false;
+  int _pendingOperations = 0;
+  bool get busy => _pendingOperations > 0;
   String? error;
   String? syncMessage;
   List<SyncConflict> conflicts = const [];
@@ -31,19 +48,17 @@ class SyncController extends ChangeNotifier {
   Future<void> Function(DateTime value)? onSynchronized;
 
   void configure(WebDavProfile? profile) {
+    if (_engine != null) {
+      throw StateError('Закройте текущий SyncEngine перед перенастройкой');
+    }
     activeProfile = profile;
     if (profile == null || !_vault.ready) {
       _engine = null;
     } else {
-      _engine = SyncEngine(
-        local: _vault.cache,
-        store: _vault.store,
-        remote: WebDavClient(profile.credentials),
-        onProgress: (value) {
-          progress = value;
-          notifyListeners();
-        },
-      );
+      _engine = _engineFactory(profile, (value) {
+        progress = value;
+        notifyListeners();
+      });
     }
     notifyListeners();
   }
@@ -121,46 +136,57 @@ class SyncController extends ChangeNotifier {
   }
 
   Future<void> saveNote(String path, String source) async {
-    await _vault.saveLocal(path, source);
-    await onVaultChanged?.call();
-    final engine = _engine;
-    if (engine == null) {
-      _showNotice('Сохранено локально · WebDAV не настроен', isError: true);
-      return;
-    }
-    error = null;
-    _showNotice('Отправка в WebDAV…', inProgress: true);
+    _beginOperation();
     try {
-      final result = await engine.synchronizeFile(path);
-      conflicts = [
-        ...conflicts.where((item) => item.path != path),
-        ...result.conflicts,
-      ];
-      if (result.conflicts.isNotEmpty) {
-        _showNotice('Сохранено локально · обнаружен конфликт', isError: true);
-      } else {
-        syncMessage = result.uploaded == 0
-            ? 'Файл уже актуален: $path'
-            : 'Отправлен: $path';
-        _showNotice(
-          result.uploaded == 0
-              ? 'Сохранено · серверная версия уже актуальна'
-              : 'Сохранено и отправлено в WebDAV',
-        );
+      await _vault.saveLocal(path, source);
+      await onVaultChanged?.call();
+      final engine = _engine;
+      if (engine == null) {
+        _showNotice('Сохранено локально · WebDAV не настроен', isError: true);
+        return;
       }
-    } catch (exception, stackTrace) {
-      error = exception.toString();
-      AppLog.error(
-        'Editor',
-        'Файл сохранён локально, но не отправлен: $path',
-        exception,
-        stackTrace,
-      );
-      _showNotice('Сохранено локально · ошибка WebDAV', isError: true);
+      error = null;
+      _showNotice('Отправка в WebDAV…', inProgress: true);
+      try {
+        final result = await engine.synchronizeFile(path);
+        conflicts = [
+          ...conflicts.where((item) => item.path != path),
+          ...result.conflicts,
+        ];
+        if (result.conflicts.isNotEmpty) {
+          _showNotice('Сохранено локально · обнаружен конфликт', isError: true);
+        } else {
+          syncMessage = result.uploaded == 0
+              ? 'Файл уже актуален: $path'
+              : 'Отправлен: $path';
+          _showNotice(
+            result.uploaded == 0
+                ? 'Сохранено · серверная версия уже актуальна'
+                : 'Сохранено и отправлено в WebDAV',
+          );
+        }
+      } catch (exception, stackTrace) {
+        error = exception.toString();
+        AppLog.error(
+          'Editor',
+          'Файл сохранён локально, но не отправлен: $path',
+          exception,
+          stackTrace,
+        );
+        _showNotice('Сохранено локально · ошибка WebDAV', isError: true);
+      } finally {
+        progress = null;
+      }
     } finally {
-      progress = null;
-      notifyListeners();
+      _endOperation();
     }
+  }
+
+  Future<void> close() async {
+    final engine = _engine;
+    _engine = null;
+    notifyListeners();
+    await engine?.close();
   }
 
   void resetForProfile(String message) {
@@ -171,18 +197,26 @@ class SyncController extends ChangeNotifier {
   }
 
   Future<void> _run(String label, Future<void> Function() operation) async {
-    busy = true;
+    _beginOperation();
     error = null;
-    notifyListeners();
     try {
       await operation();
     } catch (exception, stackTrace) {
       error = exception.toString();
       AppLog.error('Operation', 'Ошибка: $label', exception, stackTrace);
     } finally {
-      busy = false;
-      notifyListeners();
+      _endOperation();
     }
+  }
+
+  void _beginOperation() {
+    _pendingOperations++;
+    notifyListeners();
+  }
+
+  void _endOperation() {
+    if (_pendingOperations > 0) _pendingOperations--;
+    notifyListeners();
   }
 
   void _showNotice(
@@ -205,6 +239,7 @@ class SyncController extends ChangeNotifier {
   @override
   void dispose() {
     _noticeTimer?.cancel();
+    unawaited(_engine?.close());
     super.dispose();
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -28,7 +29,41 @@ class WebDavPathCodec {
         (uri.scheme != 'https' && uri.scheme != 'http')) {
       return null;
     }
+    if (uri.scheme == 'http' && !_isLocalHost(uri.host)) return null;
     return uri.path.endsWith('/') ? uri : uri.replace(path: '${uri.path}/');
+  }
+
+  static String? securityWarning(Uri uri) => uri.scheme == 'http'
+      ? 'HTTP разрешён только для localhost и локальной сети. Данные WebDAV передаются без TLS.'
+      : null;
+
+  static bool isAllowed(Uri uri) =>
+      uri.scheme == 'https' || (uri.scheme == 'http' && _isLocalHost(uri.host));
+
+  static bool _isLocalHost(String source) {
+    final host = source.toLowerCase();
+    if (host == 'localhost' ||
+        host.endsWith('.localhost') ||
+        host.endsWith('.local')) {
+      return true;
+    }
+    final address = InternetAddress.tryParse(host);
+    if (address == null) return false;
+    if (address.type == InternetAddressType.IPv4) {
+      final parts = address.address.split('.').map(int.parse).toList();
+      return parts[0] == 10 ||
+          parts[0] == 127 ||
+          parts[0] == 192 && parts[1] == 168 ||
+          parts[0] == 172 && parts[1] >= 16 && parts[1] <= 31 ||
+          parts[0] == 169 && parts[1] == 254;
+    }
+    return host == '::1' ||
+        host.startsWith('fe8') ||
+        host.startsWith('fe9') ||
+        host.startsWith('fea') ||
+        host.startsWith('feb') ||
+        host.startsWith('fc') ||
+        host.startsWith('fd');
   }
 
   static String relativePath(Uri base, String href) {
@@ -84,6 +119,15 @@ class WebDavClient {
           },
         ),
       ) {
+    if (!WebDavPathCodec.isAllowed(_base)) {
+      throw ArgumentError.value(
+        _base,
+        'baseUrl',
+        'Публичный WebDAV должен использовать HTTPS',
+      );
+    }
+    final warning = WebDavPathCodec.securityWarning(_base);
+    if (warning != null) AppLog.warning('WebDAV', warning);
     AppLog.info('WebDAV', 'Клиент настроен: ${_displayUri(_base)}');
     _dio.interceptors.add(
       InterceptorsWrapper(

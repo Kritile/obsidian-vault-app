@@ -86,4 +86,6 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> clearCurrentVaultCache() =>
       _vault.clearCurrent(imageCacheLimitBytes: imageCacheLimitBytes);
+
+  Future<void> verifyCurrentVaultCache() => _vault.verifyCacheIntegrity();
 }

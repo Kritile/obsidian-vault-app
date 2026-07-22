@@ -96,4 +96,9 @@ class VaultController extends ChangeNotifier {
     await imageCache.initialize();
     await refreshIndex();
   }
+
+  Future<void> verifyCacheIntegrity() async {
+    await cache.verifyIntegrity();
+    await refreshIndex();
+  }
 }

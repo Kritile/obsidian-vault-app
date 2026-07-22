@@ -100,11 +100,22 @@ void main() {
 
     expect(await repository.list(), isEmpty);
   });
+
+  test('normal v2 startup skips full object reconciliation', () async {
+    final store = _MemoryStore()..put('note.md', 'content');
+    await EncryptedCachedRepository(store).initialize();
+    store.keysCalls = 0;
+
+    await EncryptedCachedRepository(store).initialize();
+
+    expect(store.keysCalls, 0);
+  });
 }
 
 class _MemoryStore extends EncryptedObjectStore {
   final Map<String, Uint8List> bytes = {};
   final Set<String> corrupted = {};
+  int keysCalls = 0;
 
   void put(String key, String value) {
     bytes[key] = Uint8List.fromList(utf8.encode(value));
@@ -138,7 +149,10 @@ class _MemoryStore extends EncryptedObjectStore {
   }
 
   @override
-  Future<Set<String>> keys() async => bytes.keys.toSet();
+  Future<Set<String>> keys() async {
+    keysCalls++;
+    return bytes.keys.toSet();
+  }
 
   @override
   Future<DateTime?> lastModified(String key) async => DateTime.utc(2026, 7, 22);

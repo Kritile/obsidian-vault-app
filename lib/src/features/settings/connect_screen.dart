@@ -15,10 +15,19 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _pin = TextEditingController();
+  String? _validationError;
+  String? _securityWarning;
 
   Future<void> _connect() async {
     final uri = WebDavPathCodec.parseBaseUrl(_url.text);
-    if (uri == null || _pin.text.length < 4) return;
+    if (uri == null || _pin.text.length < 4) {
+      setState(() {
+        _validationError = uri == null
+            ? 'Публичный WebDAV требует HTTPS'
+            : 'PIN должен содержать не менее 4 цифр';
+      });
+      return;
+    }
     await ref
         .read(sessionControllerProvider)
         .connect(
@@ -59,11 +68,21 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                     const SizedBox(height: 24),
                     TextField(
                       controller: _url,
+                      onChanged: (_) => _validateUrl(),
                       decoration: const InputDecoration(
                         labelText: 'WebDAV URL',
                         hintText: 'https://cloud.example.com/vault/',
                       ),
                     ),
+                    if (_securityWarning != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _securityWarning!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.tertiary,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     TextField(
                       controller: _username,
@@ -88,10 +107,11 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                             'Не менее 4 цифр; fallback для разблокировки',
                       ),
                     ),
-                    if (controller.error != null) ...[
+                    if (_validationError != null ||
+                        controller.error != null) ...[
                       const SizedBox(height: 12),
                       Text(
-                        controller.error!,
+                        _validationError ?? controller.error!,
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.error,
                         ),
@@ -116,5 +136,15 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
         ),
       ),
     );
+  }
+
+  void _validateUrl() {
+    final uri = WebDavPathCodec.parseBaseUrl(_url.text);
+    setState(() {
+      _validationError = null;
+      _securityWarning = uri == null
+          ? null
+          : WebDavPathCodec.securityWarning(uri);
+    });
   }
 }
