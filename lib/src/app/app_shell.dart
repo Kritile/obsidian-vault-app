@@ -7,6 +7,8 @@ import '../features/projects/projects_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/sync/sync_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/tasks/tasks_screen.dart';
+import '../features/projects/project_forms.dart';
 import '../features/vault/vault_browser_screen.dart';
 import '../shared/app_motion.dart';
 import 'providers.dart';
@@ -37,6 +39,11 @@ class _AppShellState extends ConsumerState<AppShell>
       label: 'День',
     ),
     NavigationDestination(
+      icon: Icon(Icons.task_alt_outlined),
+      selectedIcon: Icon(Icons.task_alt),
+      label: 'Задачи',
+    ),
+    NavigationDestination(
       icon: Icon(Icons.work_outline),
       selectedIcon: Icon(Icons.work),
       label: 'Проекты',
@@ -62,6 +69,26 @@ class _AppShellState extends ConsumerState<AppShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openExternalCapture());
+  }
+
+  Future<void> _openExternalCapture() async {
+    final text = await ref.read(taskControllerProvider).takeExternalSelection();
+    if (text == null || !mounted) return;
+    final projects = ref
+        .read(vaultControllerProvider)
+        .index
+        .projects
+        .map((note) => note.frontmatter['project']?.toString() ?? note.title)
+        .toList(growable: false);
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CreateTaskScreen(
+          projects: projects,
+          initialTitle: text,
+        ),
+      ),
+    );
   }
 
   @override
@@ -93,11 +120,12 @@ class _AppShellState extends ConsumerState<AppShell>
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
-    final visibleIndex = wide && _screenIndex == 7 ? 0 : _screenIndex;
+    final visibleIndex = wide && _screenIndex == 8 ? 0 : _screenIndex;
     final screens = <Widget>[
       const DashboardScreen(),
       const VaultBrowserScreen(),
       const DailyScreen(),
+      const TasksScreen(),
       const ProjectsScreen(),
       const ReportsScreen(),
       const SyncScreen(),
@@ -136,7 +164,7 @@ class _AppShellState extends ConsumerState<AppShell>
           children: [
             if (wide)
               NavigationRail(
-                selectedIndex: visibleIndex.clamp(0, 6),
+                selectedIndex: visibleIndex.clamp(0, 7),
                 onDestinationSelected: _selectScreen,
                 extended: MediaQuery.sizeOf(context).width >= 1180,
                 leading: const Padding(
@@ -162,7 +190,7 @@ class _AppShellState extends ConsumerState<AppShell>
           : NavigationBar(
               selectedIndex: _narrowIndex,
               onDestinationSelected: (value) =>
-                  _selectScreen(const [0, 2, 1, 7][value]),
+                  _selectScreen(const [0, 2, 1, 8][value]),
               destinations: const [
                 NavigationDestination(
                   icon: Icon(Icons.home_outlined),
@@ -239,28 +267,34 @@ class _MoreScreen extends StatelessWidget {
                 : 1.15,
             children: [
               _MoreCard(
+                icon: Icons.task_alt_outlined,
+                title: 'Задачи',
+                subtitle: 'Inbox, сроки и календарь',
+                onTap: () => onSelect(3),
+              ),
+              _MoreCard(
                 icon: Icons.work_outline,
                 title: 'Проекты',
-                subtitle: 'Проекты и задачи',
-                onTap: () => onSelect(3),
+                subtitle: 'Проекты и Kanban',
+                onTap: () => onSelect(4),
               ),
               _MoreCard(
                 icon: Icons.insights_outlined,
                 title: 'Отчёты',
                 subtitle: 'Периоды и экспорт',
-                onTap: () => onSelect(4),
+                onTap: () => onSelect(5),
               ),
               _MoreCard(
                 icon: Icons.sync,
                 title: 'Синхронизация',
                 subtitle: 'WebDAV и конфликты',
-                onTap: () => onSelect(5),
+                onTap: () => onSelect(6),
               ),
               _MoreCard(
                 icon: Icons.settings_outlined,
                 title: 'Настройки',
                 subtitle: 'Хранилища, память и интерфейс',
-                onTap: () => onSelect(6),
+                onTap: () => onSelect(7),
               ),
             ],
           ),

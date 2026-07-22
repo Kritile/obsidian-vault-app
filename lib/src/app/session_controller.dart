@@ -13,6 +13,7 @@ import '../shared/app_log.dart';
 import 'report_controller.dart';
 import 'settings_controller.dart';
 import 'sync_controller.dart';
+import 'task_controller.dart';
 import 'vault_controller.dart';
 
 class SessionController extends ChangeNotifier {
@@ -22,12 +23,17 @@ class SessionController extends ChangeNotifier {
     required SyncController sync,
     required SettingsController settings,
     required ReportController reports,
+    TaskController? tasks,
   }) : _credentials = credentials,
        _vault = vault,
        _sync = sync,
        _settings = settings,
-       _reports = reports {
-    _sync.onVaultChanged = _reports.refresh;
+       _reports = reports,
+       _tasks = tasks {
+    _sync.onVaultChanged = () async {
+      await _reports.refresh();
+      await _tasks?.reconcileNotifications();
+    };
     _sync.onSynchronized = _markLastSync;
   }
 
@@ -36,6 +42,7 @@ class SessionController extends ChangeNotifier {
   final SyncController _sync;
   final SettingsController _settings;
   final ReportController _reports;
+  final TaskController? _tasks;
   Timer? _lockTimer;
   DateTime? _backgroundedAt;
 
@@ -75,6 +82,7 @@ class SessionController extends ChangeNotifier {
       }
       _settings.configureProfiles(webDavProfiles, activeProfileId);
       await _reports.refresh();
+      await _tasks?.initializeNotifications();
     } catch (exception, stackTrace) {
       error = exception.toString();
       AppLog.error('App', 'Ошибка инициализации сессии', exception, stackTrace);

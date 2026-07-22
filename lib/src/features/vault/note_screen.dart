@@ -12,6 +12,7 @@ import '../../core/vault/vault_models.dart';
 import '../../core/editor/note_editing_controller.dart';
 import '../../shared/obsidian_markdown_view.dart';
 import '../reports/reports_screen.dart';
+import '../projects/project_forms.dart';
 import '../../core/vault/period_report_data.dart';
 import '../../core/vault/training_yaml.dart';
 import '../../shared/rich_clipboard.dart';
@@ -187,7 +188,41 @@ class _NoteScreenState extends ConsumerState<NoteScreen>
                                     },
                                   ),
                           )
-                          .toList(growable: false);
+                          .toList();
+                      final selection = _source.selection;
+                      if (selection.isValid && !selection.isCollapsed) {
+                        final selected = selection.textInside(_source.text).trim();
+                        if (selected.isNotEmpty) {
+                          items.add(
+                            ContextMenuButtonItem(
+                              label: 'Создать задачу',
+                              onPressed: () {
+                                editableTextState.hideToolbar();
+                                final projects = ref
+                                    .read(vaultControllerProvider)
+                                    .index
+                                    .projects
+                                    .map(
+                                      (note) =>
+                                          note.frontmatter['project']?.toString() ??
+                                          note.title,
+                                    )
+                                    .toList(growable: false);
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => CreateTaskScreen(
+                                      projects: projects,
+                                      initialTitle: selected,
+                                      source:
+                                          '[[${_note.document.path.replaceFirst(RegExp(r'\.md$'), '')}]]',
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          );
+                        }
+                      }
                       return AdaptiveTextSelectionToolbar.buttonItems(
                         anchors: editableTextState.contextMenuAnchors,
                         buttonItems: items,

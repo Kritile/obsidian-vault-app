@@ -89,21 +89,30 @@ class CreateTaskScreen extends ConsumerStatefulWidget {
   const CreateTaskScreen({
     required this.projects,
     this.initialProject,
+    this.initialTitle,
+    this.source,
     super.key,
   });
   final List<String> projects;
   final String? initialProject;
+  final String? initialTitle;
+  final String? source;
   @override
   ConsumerState<CreateTaskScreen> createState() => _CreateTaskScreenState();
 }
 
 class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   final _form = GlobalKey<FormState>();
-  final _title = TextEditingController();
+  late final TextEditingController _title = TextEditingController(
+    text: widget.initialTitle,
+  );
   final _description = TextEditingController();
-  late String? _project = widget.initialProject ?? widget.projects.firstOrNull;
+  late String? _project = widget.initialProject;
   var _priority = 'medium';
   DateTime? _due;
+  DateTime? _scheduled;
+  DateTime? _remindAt;
+  String? _recurrence;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -116,14 +125,17 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
           DropdownButtonFormField<String>(
             initialValue: _project,
             decoration: const InputDecoration(labelText: 'Проект'),
-            items: widget.projects
-                .map(
-                  (project) =>
-                      DropdownMenuItem(value: project, child: Text(project)),
-                )
-                .toList(growable: false),
+            items: [
+              const DropdownMenuItem<String>(
+                value: null,
+                child: Text('Inbox — без проекта'),
+              ),
+              ...widget.projects.map(
+                (project) =>
+                    DropdownMenuItem(value: project, child: Text(project)),
+              ),
+            ],
             onChanged: (value) => setState(() => _project = value),
-            validator: (value) => value == null ? 'Выберите проект' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -174,6 +186,63 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
             },
           ),
           const SizedBox(height: 12),
+          ListTile(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            tileColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+            leading: const Icon(Icons.event_available_outlined),
+            title: Text(
+              _scheduled == null
+                  ? 'Не запланирована'
+                  : 'Запланирована: ${_dateLabel(_scheduled!)}',
+            ),
+            trailing: _scheduled == null
+                ? null
+                : IconButton(
+                    onPressed: () => setState(() => _scheduled = null),
+                    icon: const Icon(Icons.clear),
+                  ),
+            onTap: () => _pickDate(_scheduled, (value) {
+              setState(() => _scheduled = value);
+            }),
+          ),
+          const SizedBox(height: 12),
+          ListTile(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            tileColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+            leading: const Icon(Icons.notifications_active_outlined),
+            title: Text(
+              _remindAt == null
+                  ? 'Без напоминания'
+                  : 'Напомнить: ${_dateLabel(_remindAt!)} ${TimeOfDay.fromDateTime(_remindAt!).format(context)}',
+            ),
+            trailing: _remindAt == null
+                ? null
+                : IconButton(
+                    onPressed: () => setState(() => _remindAt = null),
+                    icon: const Icon(Icons.clear),
+                  ),
+            onTap: _pickReminder,
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String?>(
+            initialValue: _recurrence,
+            decoration: const InputDecoration(
+              labelText: 'Повторение',
+              prefixIcon: Icon(Icons.repeat),
+            ),
+            items: const [
+              DropdownMenuItem<String?>(value: null, child: Text('Не повторять')),
+              DropdownMenuItem(value: 'FREQ=DAILY', child: Text('Каждый день')),
+              DropdownMenuItem(value: 'FREQ=WEEKLY', child: Text('Каждую неделю')),
+              DropdownMenuItem(value: 'FREQ=MONTHLY', child: Text('Каждый месяц')),
+            ],
+            onChanged: (value) => setState(() => _recurrence = value),
+          ),
+          const SizedBox(height: 12),
           TextFormField(
             controller: _description,
             minLines: 4,
@@ -200,16 +269,63 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
     await ref
-        .read(projectServiceProvider)
-        .createTask(
-          project: _project!,
+        .read(taskControllerProvider)
+        .create(
+          project: _project,
           title: _title.text.trim(),
           priority: _priority,
           due: _due,
+          scheduled: _scheduled,
+          remindAt: _remindAt,
+          recurrence: _recurrence,
           description: _description.text.trim(),
+          source: widget.source,
         );
     if (mounted) Navigator.pop(context);
   }
+
+  Future<void> _pickDate(
+    DateTime? initial,
+    ValueChanged<DateTime> onSelected,
+  ) async {
+    final value = await showDatePicker(
+      context: context,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 3650)),
+      initialDate: initial ?? DateTime.now(),
+    );
+    if (value != null) onSelected(value);
+  }
+
+  Future<void> _pickReminder() async {
+    final date = await showDatePicker(
+      context: context,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 3650)),
+      initialDate: _remindAt ?? _due ?? DateTime.now(),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(
+        _remindAt ?? DateTime(date.year, date.month, date.day, 9),
+      ),
+    );
+    if (time != null) {
+      setState(
+        () => _remindAt = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          time.hour,
+          time.minute,
+        ),
+      );
+    }
+  }
+
+  String _dateLabel(DateTime value) =>
+      '${value.day.toString().padLeft(2, '0')}.${value.month.toString().padLeft(2, '0')}.${value.year}';
 }
 
 class CreateProjectNoteScreen extends ConsumerStatefulWidget {

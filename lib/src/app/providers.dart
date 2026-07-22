@@ -6,10 +6,12 @@ import '../core/vault/daily_note_service.dart';
 import '../core/vault/native_entity_service.dart';
 import '../core/vault/project_service.dart';
 import '../core/vault/training_service.dart';
+import '../core/tasks/task_notification_service.dart';
 import 'report_controller.dart';
 import 'session_controller.dart';
 import 'settings_controller.dart';
 import 'sync_controller.dart';
+import 'task_controller.dart';
 import 'vault_controller.dart';
 
 final credentialStoreProvider = Provider<CredentialStore>(
@@ -33,6 +35,14 @@ final syncControllerProvider = ChangeNotifierProvider<SyncController>((ref) {
   return SyncController(ref.read(vaultControllerProvider));
 });
 
+final taskControllerProvider = ChangeNotifierProvider<TaskController>((ref) {
+  return TaskController(
+    ref.read(vaultControllerProvider),
+    ref.read(syncControllerProvider),
+    TaskNotificationService(),
+  );
+});
+
 final reportControllerProvider = ChangeNotifierProvider<ReportController>((
   ref,
 ) {
@@ -50,6 +60,7 @@ final sessionControllerProvider = ChangeNotifierProvider<SessionController>((
     sync: ref.read(syncControllerProvider),
     settings: ref.read(settingsControllerProvider),
     reports: ref.read(reportControllerProvider),
+    tasks: ref.read(taskControllerProvider),
   );
   controller.initialize();
   return controller;
